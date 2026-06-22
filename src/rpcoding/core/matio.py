@@ -52,12 +52,21 @@ def _as_trial_list(value: Any) -> list[dict]:
     return list(value)
 
 
-def load_trialinfo(path: Path | str, var: str = "trialInfo") -> list[dict]:
-    """Load ``trialInfo`` as a list of per-trial dicts (cell- or struct-array agnostic)."""
+def _load_record_list(path: Path | str, var: str) -> list[dict]:
     raw = load_mat(path)
     if var not in raw:
         raise KeyError(f"{path}: variable {var!r} not found (have {list(raw)})")
     return _as_trial_list(raw[var])
+
+
+def load_trialinfo(path: Path | str, var: str = "trialInfo") -> list[dict]:
+    """Load ``trialInfo`` as a list of per-trial dicts (cell- or struct-array agnostic)."""
+    return _load_record_list(path, var)
+
+
+def load_trials(path: Path | str, var: str = "Trials") -> list[dict]:
+    """Load a ``Trials`` struct array as a list of per-trial dicts (has EDF ``.Auditory`` etc.)."""
+    return _load_record_list(path, var)
 
 
 # ---- field-ladder accessors (mirror MATLAB isfield checks) ----
