@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from rpcoding.core.tasks import Task
+from rpcoding.core.tasks import COGAN_TASK_FOLDER, Task
 
 # Canonical artifact filenames produced/consumed by the pipeline.
 ALLBLOCKS_WAV = "allblocks.wav"
@@ -34,6 +34,13 @@ def d_data_subject_dir(droot: Path | str, task: Task | str, subject: str) -> Pat
     return d_data_dir(droot, task) / subject
 
 
+def cogan_task_folder(task: Task | str) -> str:
+    """Human-readable Cogan_Task_Data subfolder name (e.g. 'Lexical No Delay')."""
+    if isinstance(task, Task):
+        return COGAN_TASK_FOLDER[task]
+    return str(task)
+
+
 def cogan_task_data_dir(droot: Path | str, subject: str, task: Task | str) -> Path:
     """Raw-acquisition dir holding per-block wavs + ``*_TrialData.mat`` ('All Blocks')."""
     return (
@@ -41,7 +48,7 @@ def cogan_task_data_dir(droot: Path | str, subject: str, task: Task | str) -> Pa
         / "ECoG_Task_Data"
         / "Cogan_Task_Data"
         / subject
-        / _task_value(task)
+        / cogan_task_folder(task)
         / "All Blocks"
     )
 

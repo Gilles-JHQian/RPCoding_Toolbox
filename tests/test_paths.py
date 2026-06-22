@@ -27,9 +27,9 @@ def test_results_dir_accepts_str_task():
     )
 
 
-def test_cogan_task_data_dir():
+def test_cogan_task_data_dir_uses_human_folder_name():
     droot = Path("/box/CoganLab")
     d = paths.cogan_task_data_dir(droot, "D140", Task.LEXICAL_NODELAY)
     assert d.name == "All Blocks"
-    assert d.parent.name == "LexicalDecRepNoDelay"
+    assert d.parent.name == "Lexical No Delay"  # not the task id
     assert d.parent.parent.name == "D140"
