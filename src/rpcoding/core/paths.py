@@ -67,3 +67,17 @@ def results_root(droot: Path | str, task: Task | str) -> Path:
 def results_dir(droot: Path | str, task: Task | str, subject: str) -> Path:
     """Per-subject results dir where the pipeline writes its artifacts."""
     return results_root(droot, task) / subject
+
+
+def find_trials_mat(d_data_subject_dir: Path | str) -> Path:
+    """Locate the upstream ``**/mat/Trials.mat`` under a D_Data subject dir.
+
+    Mirrors the MATLAB ``dir(.../**/mat/Trials.mat)`` lookup: raises if zero or more than one
+    match (the pipeline requires exactly one).
+    """
+    matches = sorted(Path(d_data_subject_dir).glob("**/mat/Trials.mat"))
+    if not matches:
+        raise FileNotFoundError(f"No Trials.mat under {d_data_subject_dir} (**/mat/Trials.mat)")
+    if len(matches) > 1:
+        raise ValueError(f"Found more than one Trials.mat under {d_data_subject_dir}: {matches}")
+    return matches[0]
