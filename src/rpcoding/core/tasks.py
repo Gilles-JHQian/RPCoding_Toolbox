@@ -26,3 +26,11 @@ DEFAULT_MFA_TASK_MAP: dict[Task, str | None] = {
     Task.LEXICAL_DELAY: "lexical_repeat",
     Task.UNIQUENESS_POINT: None,
 }
+
+# The raw-acquisition tree (Cogan_Task_Data) uses human-readable folder names with spaces,
+# distinct from the task id used under D_Data / results.
+COGAN_TASK_FOLDER: dict[Task, str] = {
+    Task.LEXICAL_NODELAY: "Lexical No Delay",
+    Task.LEXICAL_DELAY: "Lexical Delay",
+    Task.UNIQUENESS_POINT: "Uniqueness Point",
+}
