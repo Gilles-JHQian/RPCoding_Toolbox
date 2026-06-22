@@ -1,0 +1,42 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+pip-wheel-metadata/
+
+# ---- Test / lint / type caches ----
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# ---- Virtual envs (we use a conda env named `rpcoding`, not in-repo) ----
+.venv/
+venv/
+env/
+
+# ---- Editors / OS ----
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ---- App runtime caches & generated data (never commit subject data) ----
+.rpcoding/
+*.wav
+*.mat
+!tests/fixtures/**/*.mat
+
+# ---- MFA outputs / downloaded models ----
+mfa/
+input_mfa*/
+output_mfa*/
+
+# ---- Reference material is kept local-only (see references/.gitignore = '*') ----
