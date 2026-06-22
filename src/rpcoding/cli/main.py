@@ -16,9 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="rpcoding",
         description="Cogan Lab Response Coding pipeline (headless).",
     )
-    parser.add_argument(
-        "--version", action="version", version=f"rpcoding {__version__}"
-    )
+    parser.add_argument("--version", action="version", version=f"rpcoding {__version__}")
     parser.add_subparsers(dest="command")
     return parser
 

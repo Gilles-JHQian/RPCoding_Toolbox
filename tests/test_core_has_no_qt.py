@@ -40,6 +40,5 @@ def test_core_does_not_import_qt():
         env=env,
     )
     assert result.returncode == 0, (
-        "rpcoding.core must not import Qt.\n"
-        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        "rpcoding.core must not import Qt.\n" f"stdout: {result.stdout}\nstderr: {result.stderr}"
     )

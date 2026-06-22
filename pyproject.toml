@@ -43,11 +43,11 @@ rpcoding = "rpcoding.cli.main:main"
 where = ["src"]
 
 [tool.black]
-line-length = 88
+line-length = 100
 target-version = ["py311"]
 
 [tool.ruff]
-line-length = 88
+line-length = 100
 target-version = "py311"
 src = ["src", "tests"]
 
