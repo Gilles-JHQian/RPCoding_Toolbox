@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rpcoding"
+version = "0.1.0"
+description = "Cogan Lab Response Coding preprocessing toolbox (PySide6 desktop app + pipeline)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Cogan Lab" }]
+# Runtime dependencies are provided by the conda environment (see environment.yml),
+# including montreal-forced-aligner which is conda-only. Install this package itself with
+# `pip install -e . --no-deps` (the conda env already supplies numpy/scipy/PySide6/etc.).
+dependencies = []
+
+[project.optional-dependencies]
+# Pip-installable deps for CI / non-conda headless testing (MFA is conda-only, excluded).
+test = [
+    "numpy",
+    "scipy",
+    "soundfile",
+    "librosa",
+    "pyyaml",
+    "hydra-core",
+    "omegaconf",
+    "textgrid",
+    "pytest>=7",
+    "pytest-cov>=4",
+]
+dev = [
+    "rpcoding[test]",
+    "ruff>=0.4",
+    "black>=24",
+    "pre-commit>=3",
+]
+
+[project.scripts]
+rpcoding = "rpcoding.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,39 @@
+# Single, self-contained, cross-platform conda environment for the RPCoding Toolbox.
+# Bundles Montreal Forced Aligner so there is NO separate MFA env to configure.
+# Create with:  conda env create -f environment.yml   (then: conda activate rpcoding)
+name: rpcoding
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  # ---- GUI ----
+  - pyside6
+  - pyqtgraph
+  # ---- scientific / audio ----
+  - numpy
+  - scipy
+  - pysoundfile          # python `soundfile` (libsndfile) WAV IO
+  - librosa              # STFT for the spectrogram view
+  - python-sounddevice   # audio playback (optional; imports as `sounddevice`)
+  # ---- forced alignment (bundled; provides the `mfa` CLI + praatio, kaldi, etc.) ----
+  - montreal-forced-aligner=3.1.1
+  - joblib=1.4.2          # MFA 3.1.1 uses joblib.Memory(bytes_limit=...), removed in joblib>=1.5
+  - "setuptools<81"       # praatio 6.0.0 (pinned by MFA) imports pkg_resources, removed in setuptools>=81
+  # ---- config / misc ----
+  - pyyaml
+  - tqdm
+  # ---- dev tooling ----
+  - pytest
+  - pytest-qt
+  - pytest-cov
+  - ruff
+  - black
+  - pre-commit
+  - pip
+  - pip:
+      # needed by the vendored MFA pipeline (hydra-configured)
+      - hydra-core==1.3.2
+      - omegaconf==2.3.0
+      - textgrid==1.6.1
+      # editable install of this package (pyproject dependencies=[] -> no deps pulled)
+      - -e .
