@@ -28,7 +28,11 @@ AUDIO_ONSET_FIELDS = (
 
 
 def load_mat(path: Path | str, *, simplify: bool = True) -> dict[str, Any]:
-    """Load a ``.mat`` file. With ``simplify`` (default), cells/structs -> lists/dicts/str."""
+    """Load a ``.mat`` file. With ``simplify`` (default), cells/structs -> lists/dicts/str.
+
+    Note: ``simplify`` also squeezes singleton dimensions, so a ``(1, N)`` numeric matrix comes
+    back 1-D. Pass ``simplify=False`` when you need to preserve a numeric matrix's 2-D shape.
+    """
     return sio.loadmat(str(path), simplify_cells=simplify)
 
 
