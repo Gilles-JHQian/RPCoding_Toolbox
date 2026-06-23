@@ -56,6 +56,10 @@ class AudioEditor(QWidget):
     load_failed = Signal(str)
     saved = Signal()
     back_requested = Signal()
+    # Internal: the render workers emit these (cross-thread); connected to UI-thread slots so the
+    # actual pyqtgraph work always runs on the GUI thread (touching graphics off-thread crashes Qt).
+    _pyramid_ready = Signal(int, object, object)  # token, pyramid, wav_path
+    _spectro_ready = Signal(int, object)  # token, handle
 
     def __init__(self, theme: Theme = DARK_THEME, parent=None):
         super().__init__(parent)
@@ -130,6 +134,10 @@ class AudioEditor(QWidget):
         self._debouncer = RangeDebouncer(40, self)
         self._debouncer.flushed.connect(self._reslice_all)
         self._owner_vb.sigXRangeChanged.connect(self._on_x_range)
+
+        # Worker results are marshalled onto the UI thread via these (queued) connections.
+        self._pyramid_ready.connect(self._on_pyramid)
+        self._spectro_ready.connect(self._on_spectro)
 
     # ---- layout ----
     def _add_row(
@@ -314,7 +322,7 @@ class AudioEditor(QWidget):
                 wav_path,
                 cache_root,
                 content_key,
-                on_result=lambda pyr, tk=token, w=wav_path: self._on_pyramid(tk, pyr, w),
+                on_result=lambda pyr, tk=token, w=wav_path: self._pyramid_ready.emit(tk, pyr, w),
                 on_error=self.load_failed.emit,
             )
         )
@@ -325,7 +333,7 @@ class AudioEditor(QWidget):
                 wav_path,
                 cache_root,
                 content_key,
-                on_result=lambda handle, tk=token: self._on_spectro(tk, handle),
+                on_result=lambda handle, tk=token: self._spectro_ready.emit(tk, handle),
                 on_error=self.load_failed.emit,
             )
         )
