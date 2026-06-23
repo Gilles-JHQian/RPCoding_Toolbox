@@ -11,11 +11,15 @@ from rpcoding.core.steps import Step
 
 
 def fingerprint(path: Path | str) -> str | None:
-    """Cheap content fingerprint (``size:mtime_ns``) without reading the file; None if absent."""
-    p = Path(path)
-    if not p.exists():
+    """Cheap content fingerprint (``size:mtime_ns``) without reading the file; None if absent.
+
+    Returns None on any ``OSError`` (missing file, or a cloud-sync placeholder that can't be
+    stat-ed — e.g. Box returns WinError 1006), so status checks never crash on synced data.
+    """
+    try:
+        st = Path(path).stat()
+    except OSError:
         return None
-    st = p.stat()
     return f"{st.st_size}:{st.st_mtime_ns}"
 
 
