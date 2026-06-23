@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QVBoxLayout, QWidget
 
 from rpcoding.core.audio.io import duration_seconds
 from rpcoding.core.audio.render.cache import AudioRenderCache
-from rpcoding.core.labels import Tier, write_tier
+from rpcoding.core.labels import Interval, Tier, write_tier
 from rpcoding.core.trial_index import TrialIndex
 from rpcoding.gui.editor.debounce import RangeDebouncer
 from rpcoding.gui.editor.interactive_viewbox import InteractiveViewBox
@@ -77,6 +77,11 @@ class AudioEditor(QWidget):
         self._active_lane: LabelLane | None = None  # lane whose label is currently selected
         self._trial_index: TrialIndex | None = None
         self._save_path: Path | None = None
+        self._clipboard: Interval | None = None
+        self._undo_stack: list[list[Interval]] = []  # snapshots of the editable tier
+        self._undo_idx = 0
+        self._restoring = False
+        self._cursor: float | None = None
         self._row = 0
         self._sel_updating = False
         self._sel_regions: list[pg.LinearRegionItem] = []
@@ -131,8 +136,8 @@ class AudioEditor(QWidget):
         # selection: a span set by left-drag, mirrored read-only across all lanes; a click cursor.
         self._sel = SelectionModel(self)
         self._sel.changed.connect(self._on_selection_changed)
-        self._sel_master = self._make_sel_region(self._wave_plot, movable=False)
-        self._add_mirror_region(self._spec_plot)
+        self._sel_master = self._make_sel_region(self._wave_plot, movable=True)
+        self._add_mirror_region(self._spec_plot, movable=True)
         self._cursor_master = self._make_cursor_line(self._wave_plot)
         self._cursor_lines: list = []
         self._add_cursor_line(self._spec_plot)
@@ -177,10 +182,18 @@ class AudioEditor(QWidget):
         region.setZValue(5)
         region.hide()
         plot.addItem(region)
+        if movable:  # drag the body to move the selection, an edge to resize it
+            region.sigRegionChanged.connect(lambda _r, r=region: self._on_sel_region_changed(r))
         return region
 
-    def _add_mirror_region(self, plot: pg.PlotItem) -> None:
-        self._sel_regions.append(self._make_sel_region(plot, movable=False))
+    def _add_mirror_region(self, plot: pg.PlotItem, movable: bool = False) -> None:
+        self._sel_regions.append(self._make_sel_region(plot, movable=movable))
+
+    def _on_sel_region_changed(self, region: pg.LinearRegionItem) -> None:
+        if self._sel_updating:
+            return  # programmatic update from _on_selection_changed; don't echo
+        a, b = region.getRegion()
+        self._sel.set_span((min(a, b), max(a, b)))
 
     def _make_cursor_line(self, plot: pg.PlotItem) -> pg.InfiniteLine:
         pen = pg.mkPen(self._theme.color("accent"), width=1, style=Qt.PenStyle.DashLine)
@@ -195,6 +208,7 @@ class AudioEditor(QWidget):
 
     def set_cursor(self, x: float | None) -> None:
         """Show a vertical cursor at time ``x`` across all lanes (None hides it)."""
+        self._cursor = x
         for line in (self._cursor_master, *self._cursor_lines):
             if x is None:
                 line.hide()
@@ -271,6 +285,8 @@ class AudioEditor(QWidget):
         self._wire_vb(plot.getViewBox())
         lane = LabelLane(plot, name, self._theme, editable=editable)
         lane.label_selected.connect(lambda iv, ln=lane: self._on_label_selected(ln, iv))
+        if editable:
+            lane.tier_changed.connect(self._record_history)
         self._label_lanes.append(lane)
         self._lane_plots.append(plot)
         self._lane_labels.append(plot._name_label)
@@ -316,6 +332,9 @@ class AudioEditor(QWidget):
             by_name[name] = tier
         if cue_name in by_name:
             self._trial_index = TrialIndex(by_name[cue_name], by_name.get(condition_name))
+        self._undo_stack = [self._snapshot()]  # baseline state for undo
+        self._undo_idx = 0
+        self._clipboard = None
 
     # ---- saving ----
     def configure_save(self, path: Path | str | None) -> None:
@@ -386,11 +405,23 @@ class AudioEditor(QWidget):
 
     def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt override
         key = event.key()
-        ctrl = event.modifiers() & Qt.KeyboardModifier.ControlModifier
+        mods = event.modifiers()
+        ctrl = mods & Qt.KeyboardModifier.ControlModifier
+        shift = mods & Qt.KeyboardModifier.ShiftModifier
         if ctrl and key == Qt.Key.Key_S:
             self.save()
         elif ctrl and key == Qt.Key.Key_B:
             self._create_label_from_selection()
+        elif ctrl and key == Qt.Key.Key_C:
+            self._copy_active()
+        elif ctrl and key == Qt.Key.Key_X:
+            self._cut_active()
+        elif ctrl and key == Qt.Key.Key_V:
+            self._paste()
+        elif ctrl and key == Qt.Key.Key_Z and not shift:
+            self._undo()
+        elif (ctrl and key == Qt.Key.Key_Y) or (ctrl and shift and key == Qt.Key.Key_Z):
+            self._redo()
         elif key == Qt.Key.Key_Escape:
             self.close()
         elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
@@ -471,6 +502,68 @@ class AudioEditor(QWidget):
         lane = self._active_lane
         if lane is not None and lane.editable:
             lane.delete_active()
+
+    # ---- clipboard ----
+    def _copy_active(self) -> None:
+        iv = self._active_lane.active_interval() if self._active_lane else None
+        if iv is not None:
+            self._clipboard = Interval(iv.start, iv.end, iv.label)
+
+    def _cut_active(self) -> None:
+        lane = self._active_lane
+        if lane is not None and lane.editable and lane.active_interval() is not None:
+            self._copy_active()
+            lane.delete_active()
+
+    def _paste(self) -> None:
+        """Paste the clipboard label into the editable tier at the cursor / selection / origin."""
+        if self._clipboard is None or self._focus_lane is None:
+            return
+        span = self._sel.span()
+        start = self._cursor if self._cursor is not None else (span[0] if span else None)
+        if start is None:
+            start = self._clipboard.start
+        dur = self._clipboard.end - self._clipboard.start
+        self._select_only(self._focus_lane)
+        self._focus_lane.create(start, start + dur, self._clipboard.label)
+
+    # ---- undo / redo (state-history of the editable tier) ----
+    def _snapshot(self) -> list[Interval]:
+        if self._focus_lane is None:
+            return []
+        return [Interval(iv.start, iv.end, iv.label) for iv in self._focus_lane.intervals()]
+
+    def _record_history(self) -> None:
+        if self._restoring or self._focus_lane is None:
+            return
+        snap = self._snapshot()
+        if self._undo_stack and snap == self._undo_stack[self._undo_idx]:
+            return  # no actual change
+        del self._undo_stack[self._undo_idx + 1 :]  # drop the redo tail
+        self._undo_stack.append(snap)
+        self._undo_idx = len(self._undo_stack) - 1
+
+    def _undo(self) -> None:
+        if self._undo_idx > 0:
+            self._undo_idx -= 1
+            self._restore(self._undo_stack[self._undo_idx])
+
+    def _redo(self) -> None:
+        if self._undo_idx < len(self._undo_stack) - 1:
+            self._undo_idx += 1
+            self._restore(self._undo_stack[self._undo_idx])
+
+    def _restore(self, snap: list[Interval]) -> None:
+        if self._focus_lane is None:
+            return
+        self._restoring = True
+        try:
+            copy = [Interval(iv.start, iv.end, iv.label) for iv in snap]
+            self._focus_lane.set_tier(Tier(self._focus_lane.name, copy))
+        finally:
+            self._restoring = False
+        self._select_only(None)
+        self.set_selection(None)
 
     def _center_on(self, a: float, b: float) -> None:
         """Scroll the view to show [a, b] (keeping the current zoom width) if it's off-screen."""

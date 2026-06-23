@@ -172,6 +172,11 @@ track-name labels, col 1 = the plots (no left axis). It opens as a **separate to
   cursor → `select_at`). The selected label becomes draggable (body + endpoints; unselected labels
   stay non-movable so clicks reach the lane), **Enter** renames it, an error-palette code appends to
   it, **Delete** removes it, and its span highlights across all lanes.
+- **Clipboard & undo/redo:** Ctrl+C/X/V copy/cut/paste a label (paste at the cursor/selection,
+  preserving length); Ctrl+Z/Y undo/redo via a snapshot history of the editable tier (recorded on
+  each `tier_changed`). The selection span is a movable `LinearRegionItem` (drag body = move, edge =
+  resize) synced through the `SelectionModel`; dragging a label updates the highlight live via the
+  region's `sigRegionChanged` (the `sigRegionChangeFinished` marks the tier dirty for save/undo).
 - The selection span highlights across all lanes; the **Trial Info** panel maps the selection
   midpoint to its trial via the cue/condition tiers. **Open** is zoomed to the first 60 s (fast first
   render); **Fit** shows the whole file.
