@@ -1,0 +1,171 @@
+"""Tests for bsliang_rpcode2trials.m port (response coding -> Trials tags + timings)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from rpcoding.core.labels import Interval, read_tier
+from rpcoding.core.matio import load_trials
+from rpcoding.core.paths import find_trials_mat
+from rpcoding.core.rpcode.rpcode2trials import _delay_resp_err, rpcode_to_trials
+from rpcoding.core.tasks import Task
+from rpcoding.core.trialinfo.build import discover_trialdata_files, select_and_combine
+from rpcoding.core.wordlists import NONWORD, WORD, load_name_list
+
+# ---- synthetic NoDelay scenarios ----
+
+_WORDS = {"w.wav", "w2.wav"}
+_NONWORDS = {"nw.wav"}
+
+
+def _ti(cue, sound, **kw):
+    return {"block": 1.0, "cue": cue, "sound": sound, **kw}
+
+
+def _run_nodelay(trials, trialinfo, stim_code, response_code):
+    return rpcode_to_trials(
+        trials, trialinfo, stim_code, response_code, _WORDS, _NONWORDS, task=Task.LEXICAL_NODELAY
+    )
+
+
+def test_nodelay_all_correct():
+    # diff == 0 (Auditory == 30000*stim_start), so EDF values are 30000*seconds.
+    trials = [
+        {"Auditory": 30000 * 10, "Start": 290000, "Go": None},
+        {"Auditory": 30000 * 20, "Start": 590000, "Go": None},
+        {"Auditory": 30000 * 30, "Start": 890000, "Go": None},
+    ]
+    trialinfo = [
+        _ti("Yes/No", "w.wav", Resp="yes", RespCorrect=1, ReactionTime=2.0),
+        _ti(":=:", "nw.wav", Resp="No Response"),
+        _ti("Repeat", "w2.wav", Resp="w2"),
+    ]
+    stim_code = [Interval(10, 10.5, "x0"), Interval(20, 20.5, "x1"), Interval(30, 30.5, "w2")]
+    response_code = [Interval(32, 32.5, "w2")]  # only the Repeat trial
+
+    out = _run_nodelay(trials, trialinfo, stim_code, response_code)
+    assert out[0]["Cue_Tag"] == "Cue/Yes_No/Word/x0/CORRECT"
+    assert out[1]["Cue_Tag"] == "Cue/:=:/Nonword/x1/CORRECT"
+    assert out[2]["Cue_Tag"] == "Cue/Repeat/Word/w2/CORRECT"
+    assert out[0]["Response_Tag"] == "Resp/Yes_No/Word/x0/CORRECT"
+    assert out[0]["StimCue"] == "x0"
+    # realignment with diff==0: response start = 30000*(stim_start + RT)
+    assert out[0]["ResponseStart"] == pytest.approx(30000 * 12.0)
+    assert out[1]["StimEnd_mfa"] == pytest.approx(30000 * 20.5)
+
+
+def test_nodelay_resp_err_when_incorrect():
+    trials = [
+        {"Auditory": 30000 * 10, "Start": 290000, "Go": None},
+        {"Auditory": 30000 * 20, "Start": 590000, "Go": None},
+        {"Auditory": 30000 * 30, "Start": 890000, "Go": None},
+    ]
+    trialinfo = [
+        _ti("Yes/No", "w.wav", Resp="no", RespCorrect=0, ReactionTime=2.0),  # incorrect
+        _ti(":=:", "nw.wav", Resp="No Response"),
+        _ti("Repeat", "w2.wav", Resp="w2"),
+    ]
+    stim_code = [Interval(10, 10.5, "x0"), Interval(20, 20.5, "x1"), Interval(30, 30.5, "w2")]
+    response_code = [Interval(32, 32.5, "w2")]
+    out = _run_nodelay(trials, trialinfo, stim_code, response_code)
+    assert out[0]["Cue_Tag"] == "Cue/Yes_No/Word/x0/RESP_ERR"
+
+
+def test_nodelay_three_one_invariant():
+    trials = [{"Auditory": 0, "Start": 0, "Go": None}]
+    trialinfo = [_ti("Yes/No", "w.wav", Resp="no", RespCorrect=0, ReactionTime=0.0)]
+    with pytest.raises(ValueError, match="response"):
+        _run_nodelay(trials, trialinfo, [Interval(0, 1, "x")], [])  # 3*0 != 1
+
+
+def test_nodelay_early_and_late():
+    trials = [
+        {"Auditory": 30000 * 10, "Start": 290000, "Go": None},
+        {"Auditory": 30000 * 20, "Start": 100, "Go": None},  # next.Start tiny -> LATE for trial 0
+        {"Auditory": 30000 * 30, "Start": 890000, "Go": None},
+    ]
+    trialinfo = [
+        _ti("Yes/No", "w.wav", Resp="yes", RespCorrect=1, ReactionTime=2.0),
+        _ti(":=:", "nw.wav", Resp="No Response"),
+        _ti("Repeat", "w2.wav", Resp="w2"),
+    ]
+    stim_code = [Interval(10, 10.5, "x0"), Interval(20, 20.5, "x1"), Interval(30, 30.5, "w2")]
+    # Repeat response starts well before its stim end -> EARLY_RESP
+    response_code = [Interval(5, 5.2, "w2")]
+    out = _run_nodelay(trials, trialinfo, stim_code, response_code)
+    assert "LATE_RESP" in out[0]["Cue_Tag"]
+    assert out[2]["Cue_Tag"].endswith("EARLY_RESP")
+
+
+def test_realignment_with_nonzero_diff():
+    trials = [
+        {"Auditory": 500_000, "Start": 0, "Go": None},
+        {"Auditory": 1_000_000, "Start": 5_000_000, "Go": None},
+        {"Auditory": 1_500_000, "Start": 9_000_000, "Go": None},
+    ]
+    trialinfo = [
+        _ti("Yes/No", "w.wav", Resp="yes", RespCorrect=1, ReactionTime=2.0),
+        _ti(":=:", "nw.wav", Resp="No Response"),
+        _ti("Repeat", "w2.wav", Resp="w2"),
+    ]
+    stim_code = [Interval(10, 10.5, "x0"), Interval(2.0, 2.5, "x1"), Interval(30, 30.5, "w2")]
+    out = _run_nodelay(trials, trialinfo, stim_code, [Interval(40, 40.5, "w2")])
+    diff1 = 30000 * 2.0 - 1_000_000  # nonzero realignment offset for trial 2
+    assert out[1]["StimEnd_mfa"] == pytest.approx(30000 * 2.5 - diff1)
+
+
+# ---- Delay error-tag parsing ----
+
+
+def test_delay_error_parsing():
+    assert _delay_resp_err("ERR_TASK_YN_REP", "Repeat", WORD, None) == "ERR_TASK/YN_REP"
+    wro = _delay_resp_err("ERR_RESP_REP_WRO_galef", "Repeat", WORD, None)
+    assert wro == "ERR_RESP/REP_WRO/galef"
+    assert _delay_resp_err("ERR_RESP_REP_MIS", "Repeat", WORD, None) == "ERR_RESP/REP_MIS"
+    assert _delay_resp_err("NOISE", "Repeat", WORD, None) == "NOISE"
+    # empty tag -> yes/no mismatch check
+    assert _delay_resp_err("", "Yes/No", WORD, "no") == "ERR_RESP/YN_YN"
+    assert _delay_resp_err("", "Yes/No", NONWORD, "yes") == "ERR_RESP/YN_NY"
+    assert _delay_resp_err("", "Yes/No", WORD, "yes") is None
+
+
+# ---- real-data golden (NoDelay): reproduce the saved Trials.mat tags ----
+
+_BOX = Path("F:/CloudStorage/Box/CoganLab")
+_RESULTS = (
+    _BOX / "ECoG_Task_Data" / "response_coding" / "response_coding_results" / "LexicalDecRepNoDelay"
+)
+_CTD = _BOX / "ECoG_Task_Data" / "Cogan_Task_Data"
+_DDATA = _BOX / "D_Data" / "LexicalDecRepNoDelay"
+_WORDLIST = Path("references/lexical/word_lst.mat")
+
+
+@pytest.mark.skipif(
+    not (_RESULTS.exists() and _WORDLIST.exists()),
+    reason="CoganLab data / word lists not available",
+)
+@pytest.mark.parametrize("subject", ["D134", "D140"])
+def test_real_rpcode_nodelay_golden(subject):
+    rdir = _RESULTS / subject
+    saved = load_trials(find_trials_mat(_DDATA / subject))  # input (.Auditory/.Start) + golden tags
+    trialinfo, _ = select_and_combine(
+        discover_trialdata_files(_CTD / subject / "Lexical No Delay" / "All Blocks")
+    )
+    stim_code = list(read_tier(rdir / "mfa" / "mfa_stim_words.txt").intervals)
+    response_code = list(read_tier(rdir / "bsliang_resp_words_errors.txt").intervals)
+    words = set(load_name_list(_WORDLIST, "words"))
+    nonwords = set(load_name_list(_WORDLIST.with_name("nonword_lst.mat"), "nonwords"))
+
+    out = rpcode_to_trials(
+        saved, trialinfo, stim_code, response_code, words, nonwords, task=Task.LEXICAL_NODELAY
+    )
+
+    assert len(out) == len(saved)
+    for t in range(len(out)):
+        for tag in ("Cue_Tag", "Auditory_Tag", "Response_Tag"):
+            assert out[t][tag] == saved[t][tag], f"trial {t + 1} {tag}"
+        assert out[t]["StimCue"] == saved[t]["StimCue"], f"trial {t + 1} StimCue"
+        for num in ("StimEnd_mfa", "ResponseStart", "ResponseEnd"):
+            assert out[t][num] == pytest.approx(saved[t][num], abs=1e-2), f"trial {t + 1} {num}"
