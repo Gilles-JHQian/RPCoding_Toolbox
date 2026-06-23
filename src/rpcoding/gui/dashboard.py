@@ -16,13 +16,16 @@ from PySide6.QtWidgets import (
 
 from rpcoding.core import paths
 from rpcoding.core.config import AppConfig
-from rpcoding.core.runner import run_pipeline, run_step
+from rpcoding.core.runner import run_step
 from rpcoding.core.scanner import scan_subjects
 from rpcoding.core.session import SubjectSession
 from rpcoding.core.steps import STEP_ORDER, EffectiveState, Step, StepKind, StepSpec
 from rpcoding.core.steps import STEP_SPECS as _SPECS
 from rpcoding.core.tasks import Task
+from rpcoding.gui.batch_dialog import BatchDialog
+from rpcoding.gui.config import save_config
 from rpcoding.gui.progress_dialog import ProgressDialog
+from rpcoding.gui.settings_dialog import SettingsDialog
 from rpcoding.gui.theme import Theme
 from rpcoding.gui.widgets.step_row import StepRow
 from rpcoding.gui.widgets.subject_list import SubjectList
@@ -69,10 +72,14 @@ class Dashboard(QWidget):
         scan.clicked.connect(self._scan)
         lay.addWidget(scan)
         lay.addStretch(1)
-        self._run_all = QPushButton("▶ Run automated")
+        self._run_all = QPushButton("▶ Run batch")
         self._run_all.setObjectName("Primary")
-        self._run_all.clicked.connect(self._run_automated)
+        self._run_all.clicked.connect(self._open_batch)
         lay.addWidget(self._run_all)
+        settings_btn = QPushButton("⚙")
+        settings_btn.setFixedWidth(36)
+        settings_btn.clicked.connect(self._open_settings)
+        lay.addWidget(settings_btn)
         theme_btn = QPushButton("◐")
         theme_btn.setFixedWidth(36)
         theme_btn.clicked.connect(self.theme_toggle_requested.emit)
@@ -148,10 +155,26 @@ class Dashboard(QWidget):
             return
         self._run(spec.title, run_step, self._session, step)
 
-    def _run_automated(self) -> None:
-        if self._session is None:
+    def _open_batch(self) -> None:
+        subjects = self._subjects.checked_subjects()
+        if not subjects:
             return
-        self._run("Run automated pipeline", run_pipeline, self._session)
+        BatchDialog(self._config, self.current_task, subjects, self).exec()
+        self._refresh_states()
+
+    def _open_settings(self) -> None:
+        dialog = SettingsDialog(self._config, self)
+        if dialog.exec() != SettingsDialog.DialogCode.Accepted:
+            return
+        self.set_config(dialog.result_config())
+
+    def set_config(self, config: AppConfig) -> None:
+        """Apply and persist a new config; rebuild the current session against it."""
+        self._config = config
+        save_config(config)
+        if self._session is not None:
+            self._session = SubjectSession(config, self.current_task, self._session.subject)
+        self._refresh_states()
 
     def _run(self, title: str, fn, *args) -> None:
         dialog = ProgressDialog(f"{title} — {self._session.subject}", self)
