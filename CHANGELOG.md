@@ -1,0 +1,82 @@
+# Changelog
+
+All notable changes to RPCoding Toolbox. Format based on
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The project is pre-release (`0.1.0`,
+in development); entries are grouped by the feature branch that delivered them, newest first.
+
+## [Unreleased]
+
+### Backend — pipeline core (golden-file verified)
+
+- **Scaffolding & environment** (`feat/scaffolding`): src layout, `pyproject.toml`, cross-platform
+  `environment.yml` + `scripts/setup_env.{ps1,sh}`, ruff/black/pre-commit, pytest skeleton, the
+  core-has-no-Qt guard, CI matrix, and the `design/gui/` handoff path.
+- **Core I/O** (`feat/core-io`): `AppConfig`/paths/`Task` enum + MFA map; `labels.Tier` Audacity
+  `.txt` read/write; `matio` `.mat` load/save with the cell-vs-struct + field-name "ladders";
+  Word/Nonword classification.
+- **WAV concat** (`feat/wav-concat`): `combine_wavs` port — block order, 10 s pad, 1-based onsets,
+  equal-fs assert; soundfile IO.
+- **trialInfo merge** (`feat/trialinfo-merge`): combine/fix/cell2mat ports; the **D140/D134**
+  split-run detector that reconstructs the full 504-trial list (byte-exact vs MATLAB); provenance
+  report.
+- **Event generation** (`feat/event-generation`): `make_cue_events` + `make_condition_events` ports;
+  reads the external `Trials.mat` (`.Auditory`); hard error if missing/ambiguous.
+- **Project session** (`feat/project-session`): the Step DAG + staleness, `SubjectSession` +
+  atomic `Manifest`, subject scanner, batch runner, and the headless CLI.
+- **MFA integration** (`feat/mfa-integration`): vendored the lab's MFA pipeline; model/dict download
+  helper; runner via `sys.executable`; `mfa_*.txt` ingest.
+- **rpcode2trials** (`feat/rpcode2trials`): the `bsliang_rpcode2trials` port — EDF realignment,
+  NoDelay/Delay branches, derived error tags; normal path only; per-branch + `Trials.mat` goldens.
+
+### GUI
+
+- **Shell** (`feat/gui-shell`): QApplication + main window, task/subject panel, worker base +
+  progress dialog, dashboard step status, dark/light theme.
+- **Audio render engine** (`feat/audio-render-engine`): waveform min/max LOD pyramid + cache;
+  memmapped log-spectrogram (Magma + HistogramLUT); shared x-linked time axis. Real-data verified
+  (~6 s build, <15 ms reslice on a 50.9-min file).
+- **Label tracks** (`feat/label-tracks`): tier rendering, cross-lane selection highlight, Trial Info
+  panel, keyboard editing (Ctrl+B / Tab / Delete).
+- **Manual-coding integration** (`feat/manual-coding-integration`): editor loads real tiers per step;
+  saves `first_stims.txt` / `bsliang_resp_words_errors.txt`; wires the `write_trials` step (enriched
+  `Trials.mat` + `Trials_org.mat` backup); `AppConfig` word/nonword lists.
+- **Batch & polish** (`feat/batch-and-polish`): batch dialog (automated pipeline across selected
+  subjects, aggregated progress); settings dialog (data root, word lists, MFA task map); optional
+  external-denoise step; the [User Guide](docs/USER_GUIDE.md).
+
+### Dashboard V0.2 (`feat/dashboard-v0.2`)
+
+- **File-based step completion:** a step shows Done when its output exists on disk, even with no
+  manifest — subjects processed by the legacy pipeline now show green. Disk presence wins over a
+  leftover error record.
+- **Cloud-sync resilience:** stat/exists calls swallow `OSError`, so an un-readable Box placeholder
+  (WinError 1006) no longer crashes the scan.
+- **UX fixes from V0.1 testing:** task switch auto-rescans; single steps run inline (no popup) with a
+  *Running* chip; errors are re-runnable, hover-summarised and click-to-detail; subject rows show
+  file-based `done/total`.
+- **Visual rebuild to the design handoff:** IBM Plex fonts, filled-pill state chips + status dots,
+  subject-list rows, mono subject-id header with a stale/complete banner, per-state action buttons.
+
+### Editor performance & interaction (`fix/editor-performance`, `fix/editor-interaction`)
+
+- **Label virtualization:** only the labels in view are rendered (recycled pool, capped); the
+  response-coding editor no longer freezes/crashes on the thousands-of-intervals tiers (a working
+  window renders in ~2–15 ms). The dense `*_phones` MFA tiers are excluded.
+- **Unified interaction across all lanes:** one `InteractiveViewBox` on every track — left-drag
+  selects a span (→ Ctrl+B labels), **Ctrl+wheel** zooms, **Shift+wheel** pans (plain wheel no-op),
+  working over the waveform, spectrogram and label tracks alike.
+- **Editor is its own window**; opens zoomed to the first 60 s for a fast first render (Fit shows the
+  whole file); horizontal track names in a left column; label lanes drop the y-axis ticks.
+- **Non-blocking dashboard scan:** per-subject summaries computed incrementally via a `QTimer`.
+
+### Fixed
+
+- **Editor crash on open** (`fix/editor-thread-crash`): render-worker `result` signals were Direct
+  connections, so the pyqtgraph reslice ran on the worker thread; after virtualization this created
+  `TextItem`s off the GUI thread → access violation (both workers racing the same lane pool). Results
+  are now routed through queued editor signals so the graphics work runs on the UI thread.
+
+## Deferred
+
+- **Irregular subjects** (`feat/irregular-subjects`): per-subject MATLAB corrections
+  (D90/D28/D26/D92/D100/D102/D117/D23) and lenient count-mismatch recovery — awaiting rules/data.

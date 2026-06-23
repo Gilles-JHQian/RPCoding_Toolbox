@@ -8,13 +8,18 @@ MATLAB outputs (golden-file verified).
 
 Supported tasks: `LexicalDecRepNoDelay`, `LexicalDecRepDelay`, `Uniqueness_Point`.
 
-**Usage:** see the [User Guide](docs/USER_GUIDE.md) for the GUI workflow, settings, batch runs, the
-annotation editor, and the headless CLI.
+**Docs:**
+- [User Guide](docs/USER_GUIDE.md) — GUI workflow, settings, batch runs, the annotation editor, CLI.
+- [Technical Documentation](docs/ARCHITECTURE.md) — architecture, data model, MATLAB ports, render
+  engine, editor internals, threading model, testing.
+- [Changelog](CHANGELOG.md) — what's been delivered, by milestone.
 
 ## Status
 
-Early development. See the implementation plan and progress in the project notes. The GUI is built on
-**PySide6 + pyqtgraph**; the core pipeline is a pure-Python library usable headless via a CLI.
+Early development; the end-to-end pipeline works (scan → automated steps + batch → annotation editor
+for the manual steps → enriched `Trials.mat`). 148 tests pass. The GUI is built on **PySide6 +
+pyqtgraph**; the core pipeline is a pure-Python library usable headless via a CLI. Remaining: the
+deferred per-subject "irregular subjects" corrections (see the changelog).
 
 ## Setup
 
