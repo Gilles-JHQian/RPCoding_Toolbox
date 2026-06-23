@@ -24,6 +24,7 @@ DARK: dict[str, str] = {
     "btn-bg": "#262b34",
     "btn-border": "#353c48",
     "lane-bg": "#0e1014",
+    "wave-stroke": "#46c7d6",
 }
 
 LIGHT: dict[str, str] = {
@@ -40,6 +41,7 @@ LIGHT: dict[str, str] = {
     "btn-bg": "#ffffff",
     "btn-border": "#d3d8e0",
     "lane-bg": "#f3f5f9",
+    "wave-stroke": "#1693a0",
 }
 
 # EffectiveState -> (dark hue, light hue)
