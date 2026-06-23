@@ -1,12 +1,14 @@
-"""Main window: a stacked dashboard + (placeholder) editor, with theme switching."""
+"""Main window: a stacked dashboard + audio editor, with theme switching."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QStackedWidget
+from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget
 
+from rpcoding.core import paths
 from rpcoding.core.config import AppConfig
 from rpcoding.gui.dashboard import Dashboard
+from rpcoding.gui.editor import AudioEditor
 from rpcoding.gui.theme import DARK_THEME, LIGHT_THEME, Theme, qss
 
 
@@ -25,9 +27,12 @@ class MainWindow(QMainWindow):
         self._dashboard.open_editor.connect(self._open_editor)
         self._stack.addWidget(self._dashboard)
 
-        self._editor_placeholder = QLabel("Annotation editor — built in the next branch")
-        self._editor_placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._stack.addWidget(self._editor_placeholder)
+        self._editor = AudioEditor(theme)
+        self._stack.addWidget(self._editor)
+
+        # Esc returns to the dashboard from the editor.
+        back = QShortcut(QKeySequence("Escape"), self)
+        back.activated.connect(lambda: self._stack.setCurrentWidget(self._dashboard))
 
         self.apply_theme(theme)
 
@@ -37,9 +42,13 @@ class MainWindow(QMainWindow):
         if app is not None:
             app.setStyleSheet(qss(theme))
         self._dashboard.apply_theme(theme)
+        self._editor.set_theme(theme)
 
     def toggle_theme(self) -> None:
         self.apply_theme(LIGHT_THEME if self._theme.name == "dark" else DARK_THEME)
 
     def _open_editor(self, session, step) -> None:  # noqa: ANN001 - Qt signal payloads
-        self._stack.setCurrentWidget(self._editor_placeholder)
+        wav = session.output_path(paths.ALLBLOCKS_WAV)
+        if wav.exists():
+            self._editor.load(wav, session.results_dir / ".rpcoding" / "cache")
+        self._stack.setCurrentWidget(self._editor)
