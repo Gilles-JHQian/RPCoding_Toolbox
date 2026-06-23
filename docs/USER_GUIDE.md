@@ -74,11 +74,14 @@ Drag/zoom/pan work over **any** lane (waveform, spectrogram, label tracks). Sele
 label — shows the trial it maps to in the Trial Info panel and highlights that time across all lanes.
 
 **Cursor & selection:** click an audio lane to drop a cursor; left-drag to select a span. Once a span
-exists, dragging **inside** it moves the whole selection, while dragging **outside** starts a new one.
+exists, dragging **inside** it moves the whole selection, dragging an **edge** resizes it, and
+dragging **outside** starts a new one (Audacity-style).
 
 **Selecting & editing labels:** click a label to select it; then drag its body or either endpoint to
-adjust, press **Enter** to rename, or click an **error-palette** button (right panel) to append that
-code. The selected label's span is highlighted on the waveform and spectrogram above.
+adjust (the highlight follows live), press **Enter** to rename, or click an **error-palette** button
+(right panel) to append that code. **Ctrl+C / Ctrl+X / Ctrl+V** copy / cut / paste a label (paste
+lands at the cursor, keeping its length), and **Ctrl+Z / Ctrl+Y** undo / redo. The selected label's
+span is highlighted on the waveform and spectrogram above.
 
 ### Keyboard / mouse
 
@@ -88,8 +91,11 @@ code. The selected label's span is highlighted on the waveform and spectrogram a
 | Shift + wheel | Pan the time axis |
 | Left-drag (any lane) | Select a time span |
 | Click a label | Select it (then drag / Enter-rename / error-palette) |
+| Drag selection edge / body | Resize / move the selection |
 | Ctrl + B | Create a label from the selection (on the editable track) |
 | Enter | Rename the selected label |
+| Ctrl + C / X / V | Copy / cut / paste the selected label |
+| Ctrl + Z / Y | Undo / redo label edits |
 | Tab / Shift+Tab | Next / previous label on the editable track |
 | Delete / Backspace | Delete the selected label |
 | 🔍＋ / 🔍－ / Fit | Zoom in / out / show the whole file |

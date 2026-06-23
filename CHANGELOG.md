@@ -73,6 +73,11 @@ in development); entries are grouped by the feature branch that delivered them, 
   labels (intercepted before Qt's focus traversal; toolbar/palette buttons no longer steal it).
   Clicking an audio lane drops a **cursor**; a left-drag **inside** the current selection moves it,
   a drag **outside** starts a new one (Audacity-style).
+- **Clipboard, undo/redo, resizable selection, live drag** (`feat/editor-clipboard-undo`): label
+  **copy / cut / paste** (Ctrl+C/X/V — paste lands at the cursor/selection, keeping duration + text)
+  and **undo/redo** (Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z) over the editable tier. The selection span is
+  now **resizable** — drag its body to move, an edge to resize, on the waveform or spectrogram. And
+  while you drag a label, its cross-lane highlight follows in **real time** (not only on release).
 
 ### Data compatibility
 
