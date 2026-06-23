@@ -6,7 +6,7 @@ from pathlib import Path
 
 from rpcoding.core.labels import Tier, read_tier
 
-# Output tiers the pipeline may produce (yes/no only for the Delay task; whisper/manual after review).
+# Output tiers the pipeline may produce (yes/no for Delay; whisper/manual added after review).
 MFA_TIER_NAMES = (
     "mfa_stim_words",
     "mfa_stim_phones",

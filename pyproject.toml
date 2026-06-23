@@ -39,20 +39,31 @@ dev = [
 [project.scripts]
 rpcoding = "rpcoding.cli.main:main"
 
+[project.gui-scripts]
+rpcoding-gui = "rpcoding.gui.app:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.black]
 line-length = 100
 target-version = ["py311"]
+# Vendored third-party MFA pipeline — keep upstream formatting.
+force-exclude = "src/rpcoding/core/mfa/pipeline/"
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
 src = ["src", "tests"]
+# Vendored third-party MFA pipeline — do not lint.
+extend-exclude = ["src/rpcoding/core/mfa/pipeline"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# imports follow pytest.importorskip guards (skip the module when PySide6 is absent)
+"tests/test_gui_shell.py" = ["E402"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
