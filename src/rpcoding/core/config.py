@@ -19,9 +19,16 @@ class AppConfig:
     droot: Path
     # app-task name -> MFA task-config name (or None). Overrides merged over the defaults.
     mfa_task_map: dict[str, str | None] = field(default_factory=dict)
+    # word / nonword stimulus lists (``*.mat``); required for the write-Trials step.
+    word_list: Path | None = None
+    nonword_list: Path | None = None
 
     def __post_init__(self) -> None:
         self.droot = Path(self.droot)
+        if self.word_list is not None:
+            self.word_list = Path(self.word_list)
+        if self.nonword_list is not None:
+            self.nonword_list = Path(self.nonword_list)
         merged: dict[str, str | None] = {t.value: name for t, name in DEFAULT_MFA_TASK_MAP.items()}
         merged.update(self.mfa_task_map)
         self.mfa_task_map = merged
@@ -33,13 +40,22 @@ class AppConfig:
 
     # ---- persistence ----
     def to_dict(self) -> dict:
-        return {"droot": str(self.droot), "mfa_task_map": self.mfa_task_map}
+        return {
+            "droot": str(self.droot),
+            "mfa_task_map": self.mfa_task_map,
+            "word_list": str(self.word_list) if self.word_list is not None else None,
+            "nonword_list": str(self.nonword_list) if self.nonword_list is not None else None,
+        }
 
     @classmethod
     def from_dict(cls, data: dict) -> AppConfig:
+        word_list = data.get("word_list")
+        nonword_list = data.get("nonword_list")
         return cls(
             droot=Path(data["droot"]),
             mfa_task_map=dict(data.get("mfa_task_map", {})),
+            word_list=Path(word_list) if word_list else None,
+            nonword_list=Path(nonword_list) if nonword_list else None,
         )
 
     def save(self, path: Path | str) -> None:
