@@ -47,6 +47,12 @@ def _build_trialinfo(s: SubjectSession) -> None:
     )
 
 
+def _denoise(s: SubjectSession) -> None:
+    """Optional external denoise: performed in Audacity on ``allblocks.wav``; running it here
+    simply acknowledges that step as done (the pipeline keeps editing the same file in place)."""
+    return None
+
+
 def _make_events(s: SubjectSession) -> None:
     trials_mat = find_trials_mat(s.d_data_subject_dir)
     generate_cue_events(s.results_dir, trials_mat)
@@ -80,6 +86,7 @@ DEFAULT_ACTIONS: dict[Step, StepAction] = {
     Step.CREATE_RESULTS: _create_results,
     Step.CONCAT_WAVS: _concat_wavs,
     Step.BUILD_TRIALINFO: _build_trialinfo,
+    Step.DENOISE: _denoise,
     Step.MAKE_EVENTS: _make_events,
     Step.RUN_MFA: _run_mfa,
     Step.WRITE_TRIALS: _write_trials,
