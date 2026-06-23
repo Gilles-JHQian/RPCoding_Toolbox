@@ -20,14 +20,19 @@ BASE_DICTIONARY = "english_us_arpa"
 
 
 def default_mfa_dict_dir() -> Path:
-    """Where MFA keeps downloaded dictionaries (``~/Documents/MFA/pretrained_models/dictionary``)."""
+    """Where MFA keeps downloaded dictionaries (~/Documents/MFA/pretrained_models/dictionary)."""
     return Path.home() / "Documents" / "MFA" / "pretrained_models" / "dictionary"
 
 
 def find_mfa_exe(python_exe: str | None = None) -> Path | None:
     """Locate the ``mfa`` console script next to the given (or current) Python."""
     base = Path(python_exe or sys.executable).parent
-    for cand in (base / "mfa.exe", base / "mfa", base / "Scripts" / "mfa.exe", base / "Scripts" / "mfa"):
+    for cand in (
+        base / "mfa.exe",
+        base / "mfa",
+        base / "Scripts" / "mfa.exe",
+        base / "Scripts" / "mfa",
+    ):
         if cand.exists():
             return cand
     return None
