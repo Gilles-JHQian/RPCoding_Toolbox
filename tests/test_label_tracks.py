@@ -8,6 +8,8 @@ pytest.importorskip("PySide6")
 pytest.importorskip("pyqtgraph")
 
 import pyqtgraph as pg
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QPushButton
 
 from rpcoding.core.labels import Interval, Tier
@@ -148,3 +150,36 @@ def test_editor_tab_navigation(qtbot):
     assert ed.selection() == (1.0, 2.0)
     ed._navigate(1)
     assert ed.selection() == (5.0, 6.0)
+
+
+def test_tab_key_navigates_labels(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", [Interval(1, 2, "a"), Interval(5, 6, "b")]), True)])
+    # event() intercepts Tab before focus traversal -> label navigation
+    ed.event(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Tab, Qt.KeyboardModifier.NoModifier))
+    assert ed.selection() == (1.0, 2.0)
+    ed.event(QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Tab, Qt.KeyboardModifier.NoModifier))
+    assert ed.selection() == (5.0, 6.0)
+
+
+def test_selection_move_vs_new(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", []), True)])
+    ed._on_region_dragged(10.0, 20.0, True)  # drag outside any selection -> new
+    assert ed.selection() == (10.0, 20.0)
+    ed._on_region_dragged(15.0, 25.0, True)  # drag starting inside [10,20] -> move by +10
+    assert ed.selection() == (20.0, 30.0)
+    ed._on_region_dragged(50.0, 60.0, True)  # drag starting outside -> new
+    assert ed.selection() == (50.0, 60.0)
+
+
+def test_audio_click_sets_cursor(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", []), True)])
+    ed.set_cursor(7.5)
+    assert ed._cursor_master.value() == 7.5
+    ed.set_selection((1.0, 2.0))  # a span supersedes the cursor
+    assert ed.selection() == (1.0, 2.0)

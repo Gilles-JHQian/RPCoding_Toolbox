@@ -37,8 +37,9 @@ class _FakeWheel:
 
 
 class _FakeDrag:
-    def __init__(self, button, down, now):
-        self._b, self._down, self._now, self.accepted = button, down, now, False
+    def __init__(self, button, down, now, is_start=True):
+        self._b, self._down, self._now, self._start = button, down, now, is_start
+        self.accepted = False
 
     def button(self):
         return self._b
@@ -48,6 +49,9 @@ class _FakeDrag:
 
     def scenePos(self):
         return self._now
+
+    def isStart(self):
+        return self._start
 
     def accept(self):
         self.accepted = True
@@ -123,9 +127,9 @@ def test_interactive_viewbox_drag_selects(qtbot, monkeypatch):
     vb = InteractiveViewBox()
     monkeypatch.setattr(vb, "mapSceneToView", lambda p: p)  # identity (scene x == time)
     spans: list = []
-    vb.region_selected.connect(lambda a, b: spans.append((a, b)))
+    vb.region_dragged.connect(lambda a, b, s: spans.append((a, b, s)))
     vb.mouseDragEvent(_FakeDrag(Qt.MouseButton.LeftButton, QPointF(3.0, 0.0), QPointF(7.0, 0.0)))
-    assert spans == [(3.0, 7.0)]
+    assert spans == [(3.0, 7.0, True)]
 
 
 def test_load_synth_wav(qtbot, tmp_path):

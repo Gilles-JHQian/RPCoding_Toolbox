@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pyqtgraph as pg
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QVBoxLayout, QWidget
 
@@ -128,11 +128,18 @@ class AudioEditor(QWidget):
         self._wire_vb(self._spec_plot.getViewBox())
         self._base_row = self._row  # first row available for label lanes (after ruler/wave/spec)
 
-        # selection: a span set by left-drag on the waveform, mirrored read-only across all lanes.
+        # selection: a span set by left-drag, mirrored read-only across all lanes; a click cursor.
         self._sel = SelectionModel(self)
         self._sel.changed.connect(self._on_selection_changed)
         self._sel_master = self._make_sel_region(self._wave_plot, movable=False)
         self._add_mirror_region(self._spec_plot)
+        self._cursor_master = self._make_cursor_line(self._wave_plot)
+        self._cursor_lines: list = []
+        self._add_cursor_line(self._spec_plot)
+        self._drag_mode = "new"  # "new" | "move"
+        self._drag_anchor: tuple[float, float] | None = None
+
+        self._glw.setFocusPolicy(Qt.FocusPolicy.NoFocus)  # keep Tab on the editor (label nav)
 
         self._debouncer = RangeDebouncer(40, self)
         self._debouncer.flushed.connect(self._reslice_all)
@@ -159,7 +166,7 @@ class AudioEditor(QWidget):
         return plot
 
     def _wire_vb(self, vb: InteractiveViewBox) -> None:
-        vb.region_selected.connect(self._on_drag_select)
+        vb.region_dragged.connect(self._on_region_dragged)
         vb.zoom_requested.connect(self._zoom_at)
         vb.pan_requested.connect(self._pan)
 
@@ -174,6 +181,26 @@ class AudioEditor(QWidget):
 
     def _add_mirror_region(self, plot: pg.PlotItem) -> None:
         self._sel_regions.append(self._make_sel_region(plot, movable=False))
+
+    def _make_cursor_line(self, plot: pg.PlotItem) -> pg.InfiniteLine:
+        pen = pg.mkPen(self._theme.color("accent"), width=1, style=Qt.PenStyle.DashLine)
+        line = pg.InfiniteLine(angle=90, movable=False, pen=pen)
+        line.setZValue(6)
+        line.hide()
+        plot.addItem(line)
+        return line
+
+    def _add_cursor_line(self, plot: pg.PlotItem) -> None:
+        self._cursor_lines.append(self._make_cursor_line(plot))
+
+    def set_cursor(self, x: float | None) -> None:
+        """Show a vertical cursor at time ``x`` across all lanes (None hides it)."""
+        for line in (self._cursor_master, *self._cursor_lines):
+            if x is None:
+                line.hide()
+            else:
+                line.setPos(x)
+                line.show()
 
     # ---- public API ----
     def duration(self) -> float:
@@ -248,6 +275,7 @@ class AudioEditor(QWidget):
         self._lane_plots.append(plot)
         self._lane_labels.append(plot._name_label)
         self._add_mirror_region(plot)
+        self._add_cursor_line(plot)
         if editable and self._focus_lane is None:
             self._focus_lane = lane
         return lane
@@ -263,8 +291,11 @@ class AudioEditor(QWidget):
         self._lane_plots = []
         self._lane_labels = []
         self._focus_lane = None
+        self._active_lane = None
         self._trial_index = None
         del self._sel_regions[1:]  # keep only the spectrogram mirror (added in __init__)
+        del self._cursor_lines[1:]  # keep only the spectrogram cursor line
+        self.set_cursor(None)
         self._row = self._base_row
 
     def set_tiers(
@@ -346,6 +377,13 @@ class AudioEditor(QWidget):
         self.spectrogram.close_source()
 
     # ---- keyboard editing ----
+    def event(self, e) -> bool:  # noqa: N802 - Qt override
+        # Intercept Tab/Shift+Tab before Qt's focus traversal so they navigate labels instead.
+        if e.type() == QEvent.Type.KeyPress and e.key() in (Qt.Key.Key_Tab, Qt.Key.Key_Backtab):
+            self._navigate(1 if e.key() == Qt.Key.Key_Tab else -1)
+            return True
+        return super().event(e)
+
     def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt override
         key = event.key()
         ctrl = event.modifiers() & Qt.KeyboardModifier.ControlModifier
@@ -357,10 +395,6 @@ class AudioEditor(QWidget):
             self.close()
         elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self._rename_active()
-        elif key == Qt.Key.Key_Tab:
-            self._navigate(1)
-        elif key == Qt.Key.Key_Backtab:
-            self._navigate(-1)
         elif key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             self._delete_active()
         else:
@@ -399,8 +433,15 @@ class AudioEditor(QWidget):
                 self._select_only(lane)
                 lane.select_at(vb.mapSceneToView(pos).x())  # emits label_selected -> highlight
                 return
-        self._select_only(None)  # clicked an audio lane / empty -> deselect labels
+        # clicked an audio lane (waveform/spectrogram/ruler): drop a cursor, clear any selection
+        self._select_only(None)
         self.set_selection(None)
+        for plot in (self._wave_plot, self._spec_plot, self._ruler):
+            vb = plot.getViewBox()
+            if vb.sceneBoundingRect().contains(pos):
+                self.set_cursor(float(vb.mapSceneToView(pos).x()))
+                return
+        self.set_cursor(None)
 
     def _on_label_selected(self, lane: LabelLane, iv) -> None:
         if lane is not self._active_lane:
@@ -441,11 +482,28 @@ class AudioEditor(QWidget):
         self.set_visible_range(max(centre - width / 2.0, 0.0), centre + width / 2.0)
 
     # ---- selection ----
-    def _on_drag_select(self, x0: float, x1: float) -> None:
-        if abs(x1 - x0) < 1e-6:
-            return  # degenerate drag; real clicks arrive via the scene's sigMouseClicked
-        self._select_only(None)  # a fresh time-drag clears any selected label
-        self.set_selection((min(x0, x1), max(x0, x1)))
+    def _on_region_dragged(self, x_down: float, x_now: float, is_start: bool) -> None:
+        """Drag inside the current selection moves it; drag outside makes a new selection."""
+        if is_start:
+            span = self._sel.span()
+            if span is not None and span[0] <= x_down <= span[1]:
+                self._drag_mode = "move"
+                self._drag_anchor = span
+            else:
+                self._drag_mode = "new"
+                self._drag_anchor = None
+                self._select_only(None)  # a fresh time-drag clears any selected label
+                self.set_cursor(None)
+        if self._drag_mode == "move" and self._drag_anchor is not None:
+            a, b = self._drag_anchor
+            width = b - a
+            lo = a + (x_now - x_down)
+            lo = max(lo, 0.0)
+            if self._duration:
+                lo = min(lo, self._duration - width)
+            self.set_selection((lo, lo + width))
+        else:
+            self.set_selection((min(x_down, x_now), max(x_down, x_now)))
 
     def _on_selection_changed(self, span) -> None:
         self._sel_updating = True
@@ -460,10 +518,12 @@ class AudioEditor(QWidget):
                     r.show()
         finally:
             self._sel_updating = False
-        if span is not None and self._trial_index is not None:
-            mid = (span[0] + span[1]) / 2.0
-            self._trial_panel.set_trial(self._trial_index.at(mid))
-        elif span is None:
+        if span is not None:
+            self.set_cursor(None)  # a span supersedes the click cursor
+            if self._trial_index is not None:
+                mid = (span[0] + span[1]) / 2.0
+                self._trial_panel.set_trial(self._trial_index.at(mid))
+        else:
             self._trial_panel.set_trial(None)
         self._toolbar.set_selection_text(span)
         self.selection_changed.emit(span)

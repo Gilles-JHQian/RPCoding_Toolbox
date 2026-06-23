@@ -66,6 +66,11 @@ class EditorToolbar(QFrame):
         self._bar.setVisible(False)
         lay.addWidget(self._bar)
 
+        # Mouse-only controls: don't take keyboard focus, so Tab stays with the editor (label nav).
+        for w in self.findChildren(QPushButton):
+            w.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._amp.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
     def set_progress(self, pct: int, msg: str = "") -> None:
         self._bar.setVisible(True)
         self._bar.setValue(pct)
