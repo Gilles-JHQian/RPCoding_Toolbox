@@ -1,20 +1,29 @@
-"""AudioEditor: stacked waveform + spectrogram (+ label lanes) on one shared time axis."""
+"""AudioEditor: stacked waveform + spectrogram + label lanes on one shared time axis.
+
+Adds the label-tracks layer: tier rendering, a selection span mirrored across lanes, a Trial Info
+side panel, and keyboard editing (Ctrl+B create, Tab/Shift+Tab navigate, Delete remove).
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 import pyqtgraph as pg
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from rpcoding.core.audio.io import duration_seconds
 from rpcoding.core.audio.render.cache import AudioRenderCache
+from rpcoding.core.labels import Tier
+from rpcoding.core.trial_index import TrialIndex
 from rpcoding.gui.editor.debounce import RangeDebouncer
-from rpcoding.gui.editor.label_lane import LabelLane
+from rpcoding.gui.editor.label_lane import LABEL_LANE_HEIGHT, LabelLane
 from rpcoding.gui.editor.render_jobs import build_pyramid_job, build_spectrogram_job
+from rpcoding.gui.editor.selection import SelectionModel
 from rpcoding.gui.editor.spectrogram_lane import SpectrogramLane
 from rpcoding.gui.editor.toolbar import EditorToolbar
+from rpcoding.gui.editor.trial_info_panel import TrialInfoPanel
 from rpcoding.gui.editor.waveform_lane import WaveformLane
 from rpcoding.gui.theme import DARK_THEME, Theme
 from rpcoding.gui.workers.worker import run_in_thread
@@ -24,7 +33,6 @@ pg.setConfigOptions(imageAxisOrder="row-major")
 _LEFT_W = 64
 _RULER_H = 26
 _LANE_H = 132
-_LABEL_H = 40
 
 
 class TimeAxisItem(pg.AxisItem):
@@ -47,6 +55,7 @@ class AudioEditor(QWidget):
 
     def __init__(self, theme: Theme = DARK_THEME, parent=None):
         super().__init__(parent)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._theme = theme
         self._duration = 0.0
         self._load_token = 0
@@ -54,15 +63,24 @@ class AudioEditor(QWidget):
         self._spec_ok = False
         self._jobs: list = []
         self._label_lanes: list[LabelLane] = []
+        self._focus_lane: LabelLane | None = None
+        self._trial_index: TrialIndex | None = None
         self._row = 0
+        self._sel_updating = False
+        self._sel_regions: list[pg.LinearRegionItem] = []
 
-        lay = QVBoxLayout(self)
-        lay.setContentsMargins(0, 0, 0, 0)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
         self._toolbar = EditorToolbar()
         self._toolbar.amplitude_changed.connect(self.set_amplitude_scale)
-        lay.addWidget(self._toolbar)
+        outer.addWidget(self._toolbar)
+
+        body = QHBoxLayout()
+        outer.addLayout(body, 1)
         self._glw = pg.GraphicsLayoutWidget()
-        lay.addWidget(self._glw, 1)
+        body.addWidget(self._glw, 1)
+        self._trial_panel = TrialInfoPanel()
+        body.addWidget(self._trial_panel)
 
         self._ruler = self._add_plot(_RULER_H, axis={"bottom": TimeAxisItem(orientation="bottom")})
         self._ruler.hideAxis("left")
@@ -79,16 +97,22 @@ class AudioEditor(QWidget):
         self._glw.addItem(self._hist, row=self._row - 1, col=1)
         self.spectrogram = SpectrogramLane(self._spec_plot, self._hist, theme)
 
-        # Link every non-owner lane's X to the waveform; only the owner drives pan/zoom.
         for plot in (self._ruler, self._spec_plot):
             plot.setXLink(self._wave_plot)
             plot.getViewBox().setMouseEnabled(x=False, y=False)
+
+        # selection: a movable master span on the waveform, mirrored read-only on other lanes.
+        self._sel = SelectionModel(self)
+        self._sel.changed.connect(self._on_selection_changed)
+        self._sel_master = self._make_sel_region(self._wave_plot, movable=True)
+        self._sel_master.sigRegionChangeFinished.connect(self._on_master_region)
+        self._add_mirror_region(self._spec_plot)
 
         self._debouncer = RangeDebouncer(40, self)
         self._debouncer.flushed.connect(self._reslice_all)
         self._owner_vb.sigXRangeChanged.connect(self._on_x_range)
 
-    # ---- layout helper ----
+    # ---- layout ----
     def _add_plot(self, height: int, axis: dict | None = None) -> pg.PlotItem:
         plot = self._glw.addPlot(row=self._row, col=0, axisItems=axis or {})
         self._row += 1
@@ -97,6 +121,18 @@ class AudioEditor(QWidget):
         plot.getAxis("left").setWidth(_LEFT_W)
         plot.getViewBox().setMenuEnabled(False)
         return plot
+
+    def _make_sel_region(self, plot: pg.PlotItem, movable: bool) -> pg.LinearRegionItem:
+        fill = QColor(self._theme.color("accent"))
+        fill.setAlpha(40)
+        region = pg.LinearRegionItem(movable=movable, brush=pg.mkBrush(fill))
+        region.setZValue(5)
+        region.hide()
+        plot.addItem(region)
+        return region
+
+    def _add_mirror_region(self, plot: pg.PlotItem) -> None:
+        self._sel_regions.append(self._make_sel_region(plot, movable=False))
 
     # ---- public API ----
     def duration(self) -> float:
@@ -115,21 +151,45 @@ class AudioEditor(QWidget):
     def set_db_range(self, lo: float, hi: float) -> None:
         self.spectrogram.set_db_levels(lo, hi)
 
+    def selection(self) -> tuple[float, float] | None:
+        return self._sel.span()
+
+    def set_selection(self, span: tuple[float, float] | None) -> None:
+        self._sel.set_span(span)
+
+    def add_label_lane(self, name: str, editable: bool = False) -> LabelLane:
+        plot = self._add_plot(LABEL_LANE_HEIGHT)
+        plot.hideAxis("bottom")
+        plot.setXLink(self._wave_plot)
+        plot.getViewBox().setMouseEnabled(x=False, y=False)
+        lane = LabelLane(plot, name, self._theme, editable=editable)
+        self._label_lanes.append(lane)
+        self._add_mirror_region(plot)
+        if editable and self._focus_lane is None:
+            self._focus_lane = lane
+        return lane
+
+    def set_tiers(
+        self,
+        tiers: list[tuple[str, Tier, bool]],
+        cue_name: str = "cue_events",
+        condition_name: str = "condition_events",
+    ) -> None:
+        """Populate label lanes from ``(name, tier, editable)`` and build the trial index."""
+        by_name: dict[str, Tier] = {}
+        for name, tier, editable in tiers:
+            lane = self.add_label_lane(name, editable=editable)
+            lane.set_tier(tier)
+            by_name[name] = tier
+        if cue_name in by_name:
+            self._trial_index = TrialIndex(by_name[cue_name], by_name.get(condition_name))
+
     def set_theme(self, theme: Theme) -> None:
         self._theme = theme
         self.waveform.apply_theme(theme)
         self.spectrogram.apply_theme(theme)
         for lane in self._label_lanes:
             lane.apply_theme(theme)
-
-    def add_label_lane(self, name: str) -> LabelLane:
-        plot = self._add_plot(_LABEL_H)
-        plot.hideAxis("bottom")
-        plot.setXLink(self._wave_plot)
-        plot.getViewBox().setMouseEnabled(x=False, y=False)
-        lane = LabelLane(plot, name, self._theme)
-        self._label_lanes.append(lane)
-        return lane
 
     def load(self, wav_path, cache_dir=None) -> None:
         wav_path = Path(wav_path)
@@ -151,7 +211,7 @@ class AudioEditor(QWidget):
                 cache_root,
                 content_key,
                 on_result=lambda pyr, tk=token, w=wav_path: self._on_pyramid(tk, pyr, w),
-                on_error=lambda msg: self.load_failed.emit(msg),
+                on_error=self.load_failed.emit,
             )
         )
         self._jobs.append(
@@ -162,14 +222,70 @@ class AudioEditor(QWidget):
                 cache_root,
                 content_key,
                 on_result=lambda handle, tk=token: self._on_spectro(tk, handle),
-                on_error=lambda msg: self.load_failed.emit(msg),
+                on_error=self.load_failed.emit,
             )
         )
 
     def clear(self) -> None:
         self.spectrogram.close_source()
 
-    # ---- internals ----
+    # ---- keyboard editing ----
+    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt override
+        key = event.key()
+        ctrl = event.modifiers() & Qt.KeyboardModifier.ControlModifier
+        if ctrl and key == Qt.Key.Key_B:
+            self._create_label_from_selection()
+        elif key == Qt.Key.Key_Tab:
+            self._navigate(1)
+        elif key == Qt.Key.Key_Backtab:
+            self._navigate(-1)
+        elif key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            if self._focus_lane is not None:
+                self._focus_lane.delete_active()
+        else:
+            super().keyPressEvent(event)
+
+    def _create_label_from_selection(self) -> None:
+        span = self._sel.span()
+        if span is None or self._focus_lane is None:
+            return
+        self._focus_lane.create(span[0], span[1])
+
+    def _navigate(self, step: int) -> None:
+        if self._focus_lane is None:
+            return
+        iv = self._focus_lane.select_step(step)
+        if iv is not None:
+            self.set_selection((iv.start, iv.end))
+
+    # ---- selection ----
+    def _on_master_region(self) -> None:
+        if self._sel_updating:
+            return
+        a, b = self._sel_master.getRegion()
+        self._sel.set_span((a, b))
+
+    def _on_selection_changed(self, span) -> None:
+        self._sel_updating = True
+        try:
+            regions = [self._sel_master, *self._sel_regions]
+            if span is None:
+                for r in regions:
+                    r.hide()
+            else:
+                for r in regions:
+                    r.setRegion(span)
+                    r.show()
+        finally:
+            self._sel_updating = False
+        if span is not None and self._trial_index is not None:
+            mid = (span[0] + span[1]) / 2.0
+            self._trial_panel.set_trial(self._trial_index.at(mid))
+        elif span is None:
+            self._trial_panel.set_trial(None)
+        self.selection_changed.emit(span)
+
+    # ---- render ----
     def _on_pyramid(self, token: int, pyr, wav_path) -> None:
         if token != self._load_token:
             return
