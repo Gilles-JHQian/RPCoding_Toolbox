@@ -16,4 +16,5 @@ repos:
       - id: end-of-file-fixer
       - id: check-yaml
       - id: check-added-large-files
-        args: [--maxkb=2048]
+        # 8 MB: the vendored MFA lexical dictionary (english_us_lr.dict) is ~7 MB.
+        args: [--maxkb=8192]
