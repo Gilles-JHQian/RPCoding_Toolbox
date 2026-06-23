@@ -18,9 +18,9 @@ from rpcoding.core.audio.render.cache import AudioRenderCache
 from rpcoding.core.labels import Tier, write_tier
 from rpcoding.core.trial_index import TrialIndex
 from rpcoding.gui.editor.debounce import RangeDebouncer
+from rpcoding.gui.editor.interactive_viewbox import InteractiveViewBox
 from rpcoding.gui.editor.label_lane import LABEL_LANE_HEIGHT, LabelLane
 from rpcoding.gui.editor.render_jobs import build_pyramid_job, build_spectrogram_job
-from rpcoding.gui.editor.selectable_viewbox import SelectableViewBox
 from rpcoding.gui.editor.selection import SelectionModel
 from rpcoding.gui.editor.spectrogram_lane import SpectrogramLane
 from rpcoding.gui.editor.toolbar import EditorToolbar
@@ -31,9 +31,10 @@ from rpcoding.gui.workers.worker import run_in_thread
 
 pg.setConfigOptions(imageAxisOrder="row-major")
 
-_LEFT_W = 64
+_NAME_W = 104  # width of the left track-name column
 _RULER_H = 26
 _LANE_H = 132
+_INITIAL_VIEW_S = 60.0  # open zoomed to this window (fast first render); Fit shows the whole file
 
 
 class TimeAxisItem(pg.AxisItem):
@@ -67,6 +68,7 @@ class AudioEditor(QWidget):
         self._jobs: list = []
         self._label_lanes: list[LabelLane] = []
         self._lane_plots: list[pg.PlotItem] = []
+        self._lane_labels: list[pg.LabelItem] = []
         self._focus_lane: LabelLane | None = None
         self._trial_index: TrialIndex | None = None
         self._save_path: Path | None = None
@@ -92,25 +94,31 @@ class AudioEditor(QWidget):
         self._trial_panel = TrialInfoPanel()
         body.addWidget(self._trial_panel)
 
-        self._ruler = self._add_plot(_RULER_H, axis={"bottom": TimeAxisItem(orientation="bottom")})
-        self._ruler.hideAxis("left")
+        self._glw.ci.layout.setColumnFixedWidth(0, _NAME_W)  # the track-name column
+        self._glw.ci.layout.setColumnStretchFactor(1, 1)  # plots take the rest
 
-        self._wave_plot = self._add_plot(_LANE_H, viewbox=SelectableViewBox())
+        self._ruler = self._add_row(
+            "",
+            _RULER_H,
+            axis={"bottom": TimeAxisItem(orientation="bottom")},
+            viewbox=InteractiveViewBox(),
+        )
+        self._wave_plot = self._add_row("Waveform", _LANE_H, viewbox=InteractiveViewBox())
         self._wave_plot.hideAxis("bottom")
         self._owner_vb = self._wave_plot.getViewBox()
-        self._owner_vb.setMouseEnabled(x=True, y=False)
-        self._owner_vb.region_selected.connect(self._on_drag_select)
+        self._wire_vb(self._owner_vb)
         self.waveform = WaveformLane(self._wave_plot, theme)
 
-        self._spec_plot = self._add_plot(_LANE_H)
+        self._spec_plot = self._add_row("Spectrogram", _LANE_H, viewbox=InteractiveViewBox())
         self._spec_plot.hideAxis("bottom")
         self._hist = pg.HistogramLUTItem()
-        self._glw.addItem(self._hist, row=self._row - 1, col=1)
+        self._glw.addItem(self._hist, row=self._row - 1, col=2)
         self.spectrogram = SpectrogramLane(self._spec_plot, self._hist, theme)
 
         for plot in (self._ruler, self._spec_plot):
             plot.setXLink(self._wave_plot)
-            plot.getViewBox().setMouseEnabled(x=False, y=False)
+        self._wire_vb(self._ruler.getViewBox())
+        self._wire_vb(self._spec_plot.getViewBox())
         self._base_row = self._row  # first row available for label lanes (after ruler/wave/spec)
 
         # selection: a span set by left-drag on the waveform, mirrored read-only across all lanes.
@@ -124,14 +132,25 @@ class AudioEditor(QWidget):
         self._owner_vb.sigXRangeChanged.connect(self._on_x_range)
 
     # ---- layout ----
-    def _add_plot(self, height: int, axis: dict | None = None, viewbox=None) -> pg.PlotItem:
-        plot = self._glw.addPlot(row=self._row, col=0, axisItems=axis or {}, viewBox=viewbox)
+    def _add_row(
+        self, name: str, height: int, axis: dict | None = None, viewbox=None
+    ) -> pg.PlotItem:
+        """Add a row: a horizontal name label in col 0 and the plot (no left axis) in col 1."""
+        label = pg.LabelItem(name, justify="left", size="9pt", color=self._theme.color("text-sec"))
+        self._glw.addItem(label, row=self._row, col=0)
+        plot = self._glw.addPlot(row=self._row, col=1, axisItems=axis or {}, viewBox=viewbox)
         self._row += 1
         plot.setMinimumHeight(height)
         plot.setMaximumHeight(height)
-        plot.getAxis("left").setWidth(_LEFT_W)
+        plot.hideAxis("left")  # no y scale on any lane; the name lives in col 0
         plot.getViewBox().setMenuEnabled(False)
+        plot._name_label = label  # keep a handle so label lanes can be torn down with their label
         return plot
+
+    def _wire_vb(self, vb: InteractiveViewBox) -> None:
+        vb.region_selected.connect(self._on_drag_select)
+        vb.zoom_requested.connect(self._zoom_at)
+        vb.pan_requested.connect(self._pan)
 
     def _make_sel_region(self, plot: pg.PlotItem, movable: bool) -> pg.LinearRegionItem:
         fill = QColor(self._theme.color("accent"))
@@ -173,6 +192,29 @@ class AudioEditor(QWidget):
     def fit(self) -> None:
         self.set_visible_range(0.0, self._duration or 1.0)
 
+    def _zoom_at(self, centre: float, factor: float) -> None:
+        """Zoom the time axis about ``centre`` (the cursor) — Ctrl+wheel."""
+        t0, t1 = self.visible_range()
+        n0 = centre - (centre - t0) * factor
+        n1 = centre + (t1 - centre) * factor
+        if self._duration:
+            n0 = max(n0, 0.0)
+            n1 = min(n1, self._duration)
+        if n1 - n0 > 1e-4:
+            self.set_visible_range(n0, n1)
+
+    def _pan(self, frac: float) -> None:
+        """Shift the time axis by a fraction of the view width — Shift+wheel."""
+        t0, t1 = self.visible_range()
+        width = t1 - t0
+        n0, n1 = t0 + frac * width, t1 + frac * width
+        if self._duration:
+            if n0 < 0:
+                n0, n1 = 0.0, width
+            elif n1 > self._duration:
+                n0, n1 = self._duration - width, self._duration
+        self.set_visible_range(n0, n1)
+
     def set_db_range(self, lo: float, hi: float) -> None:
         self.spectrogram.set_db_levels(lo, hi)
 
@@ -183,17 +225,16 @@ class AudioEditor(QWidget):
         self._sel.set_span(span)
 
     def add_label_lane(self, name: str, editable: bool = False) -> LabelLane:
-        plot = self._add_plot(LABEL_LANE_HEIGHT)
+        plot = self._add_row(
+            name + (" ✎" if editable else ""), LABEL_LANE_HEIGHT, viewbox=InteractiveViewBox()
+        )
         plot.hideAxis("bottom")
-        # Label lanes carry no meaningful y scale: drop the numeric ticks, keep the track name.
-        left = plot.getAxis("left")
-        left.setStyle(showValues=False)
-        left.setLabel(name + (" ✎" if editable else ""))
         plot.setXLink(self._wave_plot)
-        plot.getViewBox().setMouseEnabled(x=False, y=False)
+        self._wire_vb(plot.getViewBox())
         lane = LabelLane(plot, name, self._theme, editable=editable)
         self._label_lanes.append(lane)
         self._lane_plots.append(plot)
+        self._lane_labels.append(plot._name_label)
         self._add_mirror_region(plot)
         if editable and self._focus_lane is None:
             self._focus_lane = lane
@@ -204,8 +245,11 @@ class AudioEditor(QWidget):
         self.set_selection(None)
         for plot in self._lane_plots:
             self._glw.removeItem(plot)
+        for label in self._lane_labels:
+            self._glw.removeItem(label)
         self._label_lanes = []
         self._lane_plots = []
+        self._lane_labels = []
         self._focus_lane = None
         self._trial_index = None
         del self._sel_regions[1:]  # keep only the spectrogram mirror (added in __init__)
@@ -253,7 +297,8 @@ class AudioEditor(QWidget):
     def load(self, wav_path, cache_dir=None) -> None:
         wav_path = Path(wav_path)
         self._duration = duration_seconds(wav_path)
-        self.set_visible_range(0.0, self._duration)
+        # Open zoomed in so only a handful of labels render on open (no full-file render freeze).
+        self.set_visible_range(0.0, min(self._duration, _INITIAL_VIEW_S) or 1.0)
         cache_root = Path(cache_dir) if cache_dir else wav_path.parent / ".rpcoding" / "cache"
         content_key = AudioRenderCache(cache_root).content_key(wav_path)
 

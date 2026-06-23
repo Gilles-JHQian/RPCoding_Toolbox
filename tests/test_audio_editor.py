@@ -8,9 +8,49 @@ import pytest
 pytest.importorskip("PySide6")
 pytest.importorskip("pyqtgraph")
 
+from PySide6.QtCore import QPointF, Qt
+
 from rpcoding.gui.editor import AudioEditor
+from rpcoding.gui.editor.interactive_viewbox import InteractiveViewBox
 from rpcoding.gui.editor.track_container import _LANE_H, _RULER_H
 from rpcoding.gui.theme import DARK_THEME, LIGHT_THEME
+
+
+class _FakeWheel:
+    def __init__(self, delta, mods):
+        self._d, self._m, self.accepted = delta, mods, None
+
+    def delta(self):
+        return self._d
+
+    def modifiers(self):
+        return self._m
+
+    def scenePos(self):
+        return QPointF(0.0, 0.0)
+
+    def accept(self):
+        self.accepted = True
+
+    def ignore(self):
+        self.accepted = False
+
+
+class _FakeDrag:
+    def __init__(self, button, down, now):
+        self._b, self._down, self._now, self.accepted = button, down, now, False
+
+    def button(self):
+        return self._b
+
+    def buttonDownScenePos(self):
+        return self._down
+
+    def scenePos(self):
+        return self._now
+
+    def accept(self):
+        self.accepted = True
 
 
 def test_editor_constructs(qtbot):
@@ -50,6 +90,42 @@ def test_set_theme_does_not_raise(qtbot):
     ed = AudioEditor(DARK_THEME)
     qtbot.addWidget(ed)
     ed.set_theme(LIGHT_THEME)
+
+
+def test_all_lanes_interactive(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.add_label_lane("cue_events")
+    lanes = [ed._ruler, ed._wave_plot, ed._spec_plot, *ed._lane_plots]
+    assert all(isinstance(p.getViewBox(), InteractiveViewBox) for p in lanes)
+
+
+def test_interactive_viewbox_wheel(qtbot, monkeypatch):
+    vb = InteractiveViewBox()
+    monkeypatch.setattr(vb, "mapSceneToView", lambda _p: QPointF(5.0, 0.0))
+    zooms: list = []
+    pans: list = []
+    vb.zoom_requested.connect(lambda c, f: zooms.append((c, f)))
+    vb.pan_requested.connect(pans.append)
+
+    vb.wheelEvent(_FakeWheel(120, Qt.KeyboardModifier.ControlModifier))
+    assert zooms and zooms[0][0] == 5.0 and zooms[0][1] < 1.0  # Ctrl+wheel-up zooms in about cursor
+
+    vb.wheelEvent(_FakeWheel(120, Qt.KeyboardModifier.ShiftModifier))
+    assert pans and pans[0] < 0  # Shift+wheel pans
+
+    plain = _FakeWheel(120, Qt.KeyboardModifier.NoModifier)
+    vb.wheelEvent(plain)
+    assert plain.accepted is False  # plain wheel is a no-op
+
+
+def test_interactive_viewbox_drag_selects(qtbot, monkeypatch):
+    vb = InteractiveViewBox()
+    monkeypatch.setattr(vb, "mapSceneToView", lambda p: p)  # identity (scene x == time)
+    spans: list = []
+    vb.region_selected.connect(lambda a, b: spans.append((a, b)))
+    vb.mouseDragEvent(_FakeDrag(Qt.MouseButton.LeftButton, QPointF(3.0, 0.0), QPointF(7.0, 0.0)))
+    assert spans == [(3.0, 7.0)]
 
 
 def test_load_synth_wav(qtbot, tmp_path):
