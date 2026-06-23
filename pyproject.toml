@@ -68,6 +68,7 @@ select = ["E", "F", "W", "I", "UP", "B"]
 "tests/test_label_tracks.py" = ["E402"]
 "tests/test_manual_coding_editor.py" = ["E402"]
 "tests/test_batch_and_settings.py" = ["E402"]
+"tests/test_dashboard_v2.py" = ["E402"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
