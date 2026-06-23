@@ -53,11 +53,13 @@ def test_dtype_finite():
 
 def test_pick_level_coarsest_valid_and_raw():
     decims = [256, 1024, 4096, 16384]
-    lvl = pick_level(decims, 0, 2_000_000, 1000)  # spp=2000, target~1333
-    assert decims[lvl] <= 2000 / 1.5
+    lvl = pick_level(decims, 0, 2_000_000, 1000)  # spp=2000 -> coarsest decim <= 2000 == 1024
+    assert decims[lvl] <= 2000
     if lvl + 1 < len(decims):
-        assert decims[lvl + 1] > 2000 / 1.5
-    assert pick_level(decims, 0, 300, 1000) == -1  # zoomed in -> raw
+        assert decims[lvl + 1] > 2000
+    # a 10 s-ish window (spp ~ 294) still uses level 0, not raw
+    assert pick_level(decims, 0, 441_000, 1500) == 0
+    assert pick_level(decims, 0, 300, 1000) == -1  # zoomed in past level 0 -> raw
 
 
 def test_slice_window_only():

@@ -94,13 +94,14 @@ def build_pyramid_streaming(wav_path, progress=None) -> WaveformPyramid:
     return _pyramid_from_level0(mn0, mx0, total, info.samplerate)
 
 
-def pick_level(
-    decims: list[int], x0: float, x1: float, px_w: int, samples_per_px_target: float = 1.5
-) -> int:
-    """Coarsest level with ``decim <= samples_per_pixel / target``; -1 means slice raw samples."""
+def pick_level(decims: list[int], x0: float, x1: float, px_w: int, bins_per_px: float = 1.0) -> int:
+    """Coarsest level giving >= ``bins_per_px`` bins per pixel (decim <= spp/bins_per_px).
+
+    Returns -1 (slice raw samples) when even level 0 is too coarse, i.e. zoomed past ~256 spp.
+    """
     if px_w <= 0 or x1 <= x0:
         return -1
-    target = ((x1 - x0) / px_w) / samples_per_px_target
+    target = ((x1 - x0) / px_w) / bins_per_px
     best = -1
     for i, d in enumerate(decims):
         if d <= target:
