@@ -48,7 +48,7 @@ def discover_trialdata_files(all_blocks_dir: Path | str) -> list[TrialDataFile]:
     all_blocks_dir = Path(all_blocks_dir)
     files: list[TrialDataFile] = []
     for p in sorted(all_blocks_dir.glob("*_TrialData.mat")):
-        if "practice" in p.name.lower():
+        if "pract" in p.name.lower():  # 'Practice' or 'Pract'
             continue
         m = _TRIALDATA_RE.search(p.name)
         if not m:

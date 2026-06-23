@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt, Signal
 
 
 class InteractiveViewBox(pg.ViewBox):
-    region_selected = Signal(float, float)  # (x_down, x_now) seconds; equal => click
+    region_dragged = Signal(float, float, bool)  # (x_down, x_now, is_start) seconds
     zoom_requested = Signal(float, float)  # (centre_seconds, factor)  factor<1 zooms in
     pan_requested = Signal(float)  # fraction of the view width to shift (+ = later in time)
 
@@ -26,7 +26,7 @@ class InteractiveViewBox(pg.ViewBox):
             ev.accept()
             x0 = self.mapSceneToView(ev.buttonDownScenePos()).x()
             x1 = self.mapSceneToView(ev.scenePos()).x()
-            self.region_selected.emit(float(x0), float(x1))
+            self.region_dragged.emit(float(x0), float(x1), bool(ev.isStart()))
         else:
             super().mouseDragEvent(ev, axis)
 

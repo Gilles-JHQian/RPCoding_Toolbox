@@ -67,7 +67,7 @@ src/rpcoding/
 
 | Tree | Path | Role |
 |---|---|---|
-| Raw acquisition | `ECoG_Task_Data/Cogan_Task_Data/<subj>/<Task Folder>/All Blocks` | per-block `*.wav` + `*_TrialData.mat` (read in by concat / build-trialinfo) |
+| Raw acquisition | `ECoG_Task_Data/Cogan_Task_Data/<subj>/<task folder>/…` | per-block `*.wav` + `*_TrialData.mat` (read in by concat / build-trialinfo) — see the block-dir resolver below |
 | Upstream | `D_Data/<task>/<subj>/**/mat/Trials.mat` | **required external input**; EDF timing; written back enriched |
 | Results | `ECoG_Task_Data/response_coding/response_coding_results/<task>/<subj>/` | all pipeline artifacts |
 
@@ -75,6 +75,15 @@ Artifacts in the results dir: `allblocks.wav`, `block_wav_onsets.mat`, `trialInf
 (+ `trialInfo.report.json`), `first_stims.txt`, `cue_events.txt`, `condition_events.txt`,
 `mfa/mfa_*.txt`, `bsliang_resp_words_errors.txt`, and a hidden `.rpcoding/` holding the
 `manifest.json` and the regenerable render caches.
+
+**Block-dir resolver** ([paths.py](../src/rpcoding/core/paths.py) `resolve_blocks_dir`): acquisition
+naming was inconsistent — the task folder may be `Lexical` (not `Lexical No Delay`), the block files
+may sit in a (possibly nested) timestamped *session* folder rather than `All Blocks`, and that folder
+mixes practice files and hundreds of per-trial wavs with the block-level `*_Block_<n>_AllTrials.wav`.
+The resolver narrows to the matching task-group folder under the subject, collects dirs holding
+non-practice block `*_TrialData.mat`, scores them by a NoDelay/Delay keyword in the path, and picks
+the best (most blocks). Block-wav discovery additionally skips per-trial (`*_Trial_<n>*`) and practice
+files. Resolution is memoized on the session (the recursive scan can take seconds on cloud storage).
 
 **Manifest** ([manifest.py](../src/rpcoding/core/manifest.py)): per-step record of
 `state` (not_started | done | error), output/dep `fingerprint`s (`size:mtime_ns`), `ran_at`, and

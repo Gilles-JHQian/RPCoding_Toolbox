@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QPushButton, QVBoxLayout
 
 from rpcoding.core.trial_index import TrialInfo
@@ -48,6 +48,7 @@ class TrialInfoPanel(QFrame):
         palette = QGridLayout()
         for i, code in enumerate(ERROR_CODES):
             btn = QPushButton(code)
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)  # mouse-only; keep Tab on the editor
             btn.clicked.connect(lambda _checked=False, c=code: self.error_code_picked.emit(c))
             palette.addWidget(btn, i // 2, i % 2)
         lay.addLayout(palette)

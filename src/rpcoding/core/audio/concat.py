@@ -43,15 +43,22 @@ def block_number(filename: str) -> int | None:
     return None
 
 
+# Per-trial wavs (``D24_Block_1_Trial_10.wav``) and practice files live alongside the block-level
+# ``*_Block_<n>_AllTrials.wav`` in some sessions; they must not be mistaken for block wavs.
+_PER_TRIAL_RE = re.compile(r"_Trial_\d+", re.IGNORECASE)
+
+
 def discover_block_wavs(directory: Path | str) -> list[tuple[int, Path]]:
     """Find block wavs in ``directory`` -> ``[(block_number, path), ...]`` sorted by number.
 
-    Matches ``*_Block_<n>_*.wav`` (e.g. ``D134_Block_1_AllTrials.wav``) and legacy
-    ``block<n>.wav``. Raises if two files claim the same block number.
+    Matches ``*_Block_<n>_*.wav`` (e.g. ``D134_Block_1_AllTrials.wav``) and legacy ``block<n>.wav``,
+    skipping per-trial (``*_Trial_<m>*``) and practice files. Raises on a duplicate block number.
     """
     directory = Path(directory)
     found: dict[int, Path] = {}
     for p in sorted(directory.glob("*.wav")):
+        if _PER_TRIAL_RE.search(p.name) or "pract" in p.name.lower():
+            continue
         n = block_number(p.name)
         if n is None:
             continue

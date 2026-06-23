@@ -41,6 +41,7 @@ class SubjectSession:
     subject: str
     results_dir: Path = field(init=False)
     manifest: Manifest = field(init=False)
+    _blocks_dir: Path | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         self.results_dir = paths.results_dir(self.config.droot, self.task, self.subject)
@@ -62,7 +63,11 @@ class SubjectSession:
 
     @property
     def all_blocks_dir(self) -> Path:
-        return paths.cogan_task_data_dir(self.config.droot, self.subject, self.task)
+        """The per-block wav/mat dir — resolved (name/subfolder-tolerant), memoized."""
+        if self._blocks_dir is None:
+            subject_dir = paths.cogan_subject_dir(self.config.droot, self.subject)
+            self._blocks_dir = paths.resolve_blocks_dir(subject_dir, self.task)
+        return self._blocks_dir
 
     def output_path(self, rel: str) -> Path:
         return self.results_dir / rel
