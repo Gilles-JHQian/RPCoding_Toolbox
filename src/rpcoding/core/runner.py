@@ -14,12 +14,15 @@ from rpcoding.core.audio.concat import combine_wavs
 from rpcoding.core.config import AppConfig
 from rpcoding.core.events.condition_events import generate_condition_events
 from rpcoding.core.events.cue_events import generate_cue_events
+from rpcoding.core.matio import load_trialinfo
 from rpcoding.core.mfa.runner import run_mfa
 from rpcoding.core.paths import find_trials_mat
+from rpcoding.core.rpcode.rpcode2trials import generate_trials
 from rpcoding.core.session import SubjectSession
 from rpcoding.core.steps import STEP_SPECS, EffectiveState, Step, StepKind
 from rpcoding.core.tasks import Task
 from rpcoding.core.trialinfo.build import build_trialinfo
+from rpcoding.core.wordlists import load_name_list
 
 StepAction = Callable[[SubjectSession], None]
 
@@ -61,13 +64,25 @@ def _run_mfa(s: SubjectSession) -> None:
         raise RuntimeError(f"MFA exited with code {result.returncode}")
 
 
-# WRITE_TRIALS needs configured word lists; wired once those are in AppConfig.
+def _write_trials(s: SubjectSession) -> None:
+    if s.config.word_list is None or s.config.nonword_list is None:
+        raise ValueError(
+            "Word/nonword lists are not configured; set them in settings before writing Trials"
+        )
+    words = set(load_name_list(s.config.word_list, "words"))
+    nonwords = set(load_name_list(s.config.nonword_list, "nonwords"))
+    trialinfo = load_trialinfo(s.output_path(paths.TRIALINFO_MAT))
+    trials_mat = find_trials_mat(s.d_data_subject_dir)
+    generate_trials(s.results_dir, trials_mat, trialinfo, words, nonwords, task=s.task)
+
+
 DEFAULT_ACTIONS: dict[Step, StepAction] = {
     Step.CREATE_RESULTS: _create_results,
     Step.CONCAT_WAVS: _concat_wavs,
     Step.BUILD_TRIALINFO: _build_trialinfo,
     Step.MAKE_EVENTS: _make_events,
     Step.RUN_MFA: _run_mfa,
+    Step.WRITE_TRIALS: _write_trials,
 }
 
 

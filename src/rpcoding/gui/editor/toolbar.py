@@ -3,17 +3,23 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QProgressBar, QSlider
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QProgressBar, QPushButton, QSlider
 
 
 class EditorToolbar(QFrame):
     amplitude_changed = Signal(float)  # gain multiplier
+    save_requested = Signal()
+    back_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("TopBar")
         lay = QHBoxLayout(self)
         lay.setContentsMargins(8, 4, 8, 4)
+
+        self._back = QPushButton("← Back")
+        self._back.clicked.connect(self.back_requested.emit)
+        lay.addWidget(self._back)
 
         lay.addWidget(QLabel("Amplitude"))
         self._amp = QSlider(Qt.Orientation.Horizontal)
@@ -24,6 +30,11 @@ class EditorToolbar(QFrame):
         lay.addWidget(self._amp)
 
         lay.addStretch(1)
+        self._save = QPushButton("Save (Ctrl+S)")
+        self._save.setObjectName("Primary")
+        self._save.clicked.connect(self.save_requested.emit)
+        lay.addWidget(self._save)
+
         self._status = QLabel("")
         self._status.setObjectName("Meta")
         lay.addWidget(self._status)
@@ -42,3 +53,6 @@ class EditorToolbar(QFrame):
     def build_done(self) -> None:
         self._bar.setVisible(False)
         self._status.setText("Ready")
+
+    def set_status(self, msg: str) -> None:
+        self._status.setText(msg)

@@ -125,6 +125,10 @@ class Dashboard(QWidget):
             row.set_theme(theme)
         self._refresh_states()
 
+    def refresh(self) -> None:
+        """Recompute and repaint step states (e.g. after the editor saves an output)."""
+        self._refresh_states()
+
     def _refresh_states(self) -> None:
         if self._session is None:
             return
