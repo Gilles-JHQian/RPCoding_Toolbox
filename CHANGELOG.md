@@ -69,6 +69,19 @@ in development); entries are grouped by the feature branch that delivered them, 
   body or either endpoint, **Enter** to rename, click an **error-palette** code to append it, or
   **Delete** to remove it. The selected label's time span highlights across the waveform and
   spectrogram.
+- **Tab/cursor/selection polish** (`feat/editor-tab-cursor-compat`): **Tab/Shift+Tab** navigate
+  labels (intercepted before Qt's focus traversal; toolbar/palette buttons no longer steal it).
+  Clicking an audio lane drops a **cursor**; a left-drag **inside** the current selection moves it,
+  a drag **outside** starts a new one (Audacity-style).
+
+### Data compatibility
+
+- **Tolerant block-folder lookup** (`feat/editor-tab-cursor-compat`): the per-block wavs/mats aren't
+  always in `<subj>/Lexical No Delay/All Blocks` — the task folder may be `Lexical`, the block
+  folder a (possibly nested) timestamped session, and the same folder mixes practice + per-trial
+  files. `resolve_blocks_dir` now narrows to the task group, disambiguates the session by keyword
+  (NoDelay vs Delay), and ignores practice; block-wav discovery skips per-trial (`*_Trial_<n>*`) and
+  practice files. Verified on D24/D26/D27 (three different layouts).
 - **Editor is its own window**; opens zoomed to the first 60 s for a fast first render (Fit shows the
   whole file); horizontal track names in a left column; label lanes drop the y-axis ticks.
 - **Non-blocking dashboard scan:** per-subject summaries computed incrementally via a `QTimer`.

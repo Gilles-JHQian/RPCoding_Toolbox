@@ -73,6 +73,9 @@ relevant label tracks, and a **Trial Info** panel.
 Drag/zoom/pan work over **any** lane (waveform, spectrogram, label tracks). Selecting a span — or a
 label — shows the trial it maps to in the Trial Info panel and highlights that time across all lanes.
 
+**Cursor & selection:** click an audio lane to drop a cursor; left-drag to select a span. Once a span
+exists, dragging **inside** it moves the whole selection, while dragging **outside** starts a new one.
+
 **Selecting & editing labels:** click a label to select it; then drag its body or either endpoint to
 adjust, press **Enter** to rename, or click an **error-palette** button (right panel) to append that
 code. The selected label's span is highlighted on the waveform and spectrogram above.
