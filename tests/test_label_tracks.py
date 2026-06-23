@@ -55,10 +55,21 @@ def test_label_lane_crud_and_nav(qtbot):
     assert "a" not in labels and labels == ["b", "c2"]
 
 
+def test_label_lane_virtualizes(qtbot):
+    lane = LabelLane(_plot(qtbot), "cue", DARK_THEME, editable=False)
+    lane.set_tier(Tier("cue", [Interval(i, i + 0.5, f"l{i}") for i in range(1000)]))
+    lane.set_view(0, 1000, 1000)  # everything in view -> capped, not 1000 items
+    assert lane._used <= 241  # _MAX_RENDER (+ possibly the active one)
+    lane.set_view(10.0, 20.0, 800)  # a narrow window -> only its handful render
+    assert lane._used <= 24
+    # the data is untouched by culling
+    assert len(lane.intervals()) == 1000
+
+
 def test_label_lane_readonly_not_movable(qtbot):
     lane = LabelLane(_plot(qtbot), "cue", DARK_THEME, editable=False)
     lane.set_tier(Tier("cue", [Interval(1, 2, "1_x.wav")]))
-    assert lane._items[0].region.movable is False
+    assert lane._pool[0].region.movable is False  # the recycled pool item for the visible interval
 
 
 def test_trial_info_panel(qtbot):

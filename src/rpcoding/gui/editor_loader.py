@@ -20,6 +20,9 @@ _RESP_REFERENCE = (
     ("cue_events", paths.CUE_EVENTS_TXT),
     ("condition_events", paths.CONDITION_EVENTS_TXT),
 )
+# Word-level MFA tiers worth seeing while coding. The dense ``*_phones`` tiers (one row per phoneme,
+# thousands of intervals) are deliberately excluded — they're unreadable here and slow the editor.
+_MFA_REFERENCE = ("mfa_stim_words", "mfa_resp_words", "mfa_whisper_rscode", "mfa_manual_errcode")
 
 TierSpec = tuple[str, Tier, bool]
 
@@ -45,8 +48,10 @@ def tiers_for_step(results_dir: Path | str, step: Step) -> tuple[list[TierSpec],
             (name, _load_or_empty(results_dir / fname, name), False)
             for name, fname in _RESP_REFERENCE
         ]
-        for name, tier in ingest_mfa_tiers(results_dir / paths.MFA_DIRNAME).items():
-            specs.append((name, tier, False))
+        mfa = ingest_mfa_tiers(results_dir / paths.MFA_DIRNAME)
+        for name in _MFA_REFERENCE:
+            if name in mfa:
+                specs.append((name, mfa[name], False))
         save_path = results_dir / paths.RESP_WORDS_ERRORS_TXT
         specs.append(("response", _load_or_empty(save_path, "response"), True))
         return specs, save_path
