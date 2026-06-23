@@ -70,19 +70,28 @@ relevant label tracks, and a **Trial Info** panel.
 - **Response coding**: read-only `cue_events`, `condition_events`, and the MFA tiers for reference,
   plus one editable `response` track.
 
-Selecting a span shows the trial it maps to (trial #, task, stimulus) in the Trial Info panel.
+Drag/zoom/pan work over **any** lane (waveform, spectrogram, label tracks). Selecting a span — or a
+label — shows the trial it maps to in the Trial Info panel and highlights that time across all lanes.
 
-### Keyboard
+**Selecting & editing labels:** click a label to select it; then drag its body or either endpoint to
+adjust, press **Enter** to rename, or click an **error-palette** button (right panel) to append that
+code. The selected label's span is highlighted on the waveform and spectrogram above.
+
+### Keyboard / mouse
 
 | Shortcut | Action |
 |---|---|
-| Ctrl + wheel | Zoom (time) |
-| Left-drag | Select a span |
+| Ctrl + wheel | Zoom the time axis about the cursor |
+| Shift + wheel | Pan the time axis |
+| Left-drag (any lane) | Select a time span |
+| Click a label | Select it (then drag / Enter-rename / error-palette) |
 | Ctrl + B | Create a label from the selection (on the editable track) |
-| Tab / Shift+Tab | Next / previous label on the focused track |
-| Delete / Backspace | Delete the active label |
+| Enter | Rename the selected label |
+| Tab / Shift+Tab | Next / previous label on the editable track |
+| Delete / Backspace | Delete the selected label |
+| 🔍＋ / 🔍－ / Fit | Zoom in / out / show the whole file |
 | Ctrl + S | Save the editable track |
-| Esc | Back to the dashboard |
+| Esc | Close the editor |
 
 **Save** writes the editable track to its Audacity-compatible `.txt` (`start⇥end⇥label`, seconds)
 and marks the step done on the dashboard. Use **← Back** or **Esc** to return.

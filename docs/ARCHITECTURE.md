@@ -159,6 +159,10 @@ track-name labels, col 1 = the plots (no left axis). It opens as a **separate to
   gestures work over any track. **Left-drag** selects a time span (Audacity-style) → Ctrl+B creates
   a label on the editable tier; **Ctrl+wheel** zooms time about the cursor; **Shift+wheel** pans;
   plain wheel is a no-op. The gesture is applied to the shared (x-linked) axis.
+- **Label selection:** clicking a label selects it (scene `sigMouseClicked` → the lane under the
+  cursor → `select_at`). The selected label becomes draggable (body + endpoints; unselected labels
+  stay non-movable so clicks reach the lane), **Enter** renames it, an error-palette code appends to
+  it, **Delete** removes it, and its span highlights across all lanes.
 - The selection span highlights across all lanes; the **Trial Info** panel maps the selection
   midpoint to its trial via the cue/condition tiers. **Open** is zoomed to the first 60 s (fast first
   render); **Fit** shows the whole file.

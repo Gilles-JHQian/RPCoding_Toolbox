@@ -65,6 +65,10 @@ in development); entries are grouped by the feature branch that delivered them, 
 - **Unified interaction across all lanes:** one `InteractiveViewBox` on every track — left-drag
   selects a span (→ Ctrl+B labels), **Ctrl+wheel** zooms, **Shift+wheel** pans (plain wheel no-op),
   working over the waveform, spectrogram and label tracks alike.
+- **Label selection** (`feat/label-selection`): click a label to select it — then drag the whole
+  body or either endpoint, **Enter** to rename, click an **error-palette** code to append it, or
+  **Delete** to remove it. The selected label's time span highlights across the waveform and
+  spectrogram.
 - **Editor is its own window**; opens zoomed to the first 60 s for a fast first render (Fit shows the
   whole file); horizontal track names in a left column; label lanes drop the y-axis ticks.
 - **Non-blocking dashboard scan:** per-subject summaries computed incrementally via a `QTimer`.
