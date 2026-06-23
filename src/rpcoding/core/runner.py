@@ -7,12 +7,14 @@ are skipped by the headless runner; the GUI drives those.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from pathlib import Path
 
 from rpcoding.core import paths
 from rpcoding.core.audio.concat import combine_wavs
 from rpcoding.core.config import AppConfig
 from rpcoding.core.events.condition_events import generate_condition_events
 from rpcoding.core.events.cue_events import generate_cue_events
+from rpcoding.core.mfa.runner import run_mfa
 from rpcoding.core.paths import find_trials_mat
 from rpcoding.core.session import SubjectSession
 from rpcoding.core.steps import STEP_SPECS, EffectiveState, Step, StepKind
@@ -48,12 +50,24 @@ def _make_events(s: SubjectSession) -> None:
     generate_condition_events(s.results_dir)
 
 
-# RUN_MFA is wired in feat/mfa-integration; WRITE_TRIALS needs configured word lists.
+def _run_mfa(s: SubjectSession) -> None:
+    task_config = s.config.mfa_task(s.task)
+    if not task_config:
+        raise ValueError(f"No MFA task config mapped for {s.task}; configure it in settings")
+    patient_dir = s.results_dir.parent  # results root holding the subject folders
+    home_dir = Path(s.config.droot).parent.parent  # the dir that contains 'Box'
+    result = run_mfa(patient_dir, task_config, s.subject, home_dir=home_dir)
+    if result.returncode != 0:
+        raise RuntimeError(f"MFA exited with code {result.returncode}")
+
+
+# WRITE_TRIALS needs configured word lists; wired once those are in AppConfig.
 DEFAULT_ACTIONS: dict[Step, StepAction] = {
     Step.CREATE_RESULTS: _create_results,
     Step.CONCAT_WAVS: _concat_wavs,
     Step.BUILD_TRIALINFO: _build_trialinfo,
     Step.MAKE_EVENTS: _make_events,
+    Step.RUN_MFA: _run_mfa,
 }
 
 
