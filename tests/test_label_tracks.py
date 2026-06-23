@@ -66,6 +66,37 @@ def test_label_lane_virtualizes(qtbot):
     assert len(lane.intervals()) == 1000
 
 
+def test_label_select_at_and_movable(qtbot):
+    lane = LabelLane(_plot(qtbot), "response", DARK_THEME, editable=True)
+    lane.set_tier(Tier("response", [Interval(0.2, 0.4, "a"), Interval(0.6, 0.9, "b")]))
+    lane.set_view(0.0, 1.0, 800)
+    # not selected -> not draggable
+    assert all(it.region.movable is False for it in lane._pool[: lane._used])
+    # click inside "b" selects it and makes only it draggable
+    assert lane.select_at(0.75).label == "b"
+    assert lane.active_interval().label == "b"
+    sel = next(it for it in lane._pool[: lane._used] if it.idx == lane._active)
+    assert sel.region.movable is True
+    # clicking a gap deselects
+    assert lane.select_at(0.5) is None
+    assert lane.active_interval() is None
+
+
+def test_editor_label_select_highlights_and_renames(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", [Interval(2, 4, "1_no")]), True)])
+    resp = ed._focus_lane
+
+    ed._select_only(resp)
+    resp.select_at(3.0)  # select the label under t=3
+    assert ed._active_lane is resp
+    assert ed.selection() == (2.0, 4.0)  # its span is highlighted across lanes
+
+    ed._on_error_code("ERR_RESP_YN_NY")  # error palette appends the code
+    assert resp.active_interval().label == "1_no/ERR_RESP_YN_NY"
+
+
 def test_label_lane_readonly_not_movable(qtbot):
     lane = LabelLane(_plot(qtbot), "cue", DARK_THEME, editable=False)
     lane.set_tier(Tier("cue", [Interval(1, 2, "1_x.wav")]))

@@ -120,6 +120,12 @@ class LabelLane(QObject):
         self.select(new)
         return self._intervals[new]
 
+    def select_at(self, x: float) -> Interval | None:
+        """Select the interval containing time ``x`` (deselect if none); return it or None."""
+        hit = next((i for i, iv in enumerate(self._intervals) if iv.start <= x <= iv.end), -1)
+        self.select(hit)
+        return self._intervals[hit] if hit >= 0 else None
+
     def clear(self) -> None:
         for item in self._pool:
             self.plot.removeItem(item.region)
@@ -158,7 +164,8 @@ class LabelLane(QObject):
 
     def _slot(self, slot: int) -> _PoolItem:
         while slot >= len(self._pool):
-            region = pg.LinearRegionItem(values=[0, 0], movable=self.editable)
+            # Movable only while selected (set in _bind), so plain clicks reach the lane to select.
+            region = pg.LinearRegionItem(values=[0, 0], movable=False)
             region.setZValue(10)
             text = pg.TextItem("", anchor=(0.5, 0.5), color=self._theme.color("text-pri"))
             self.plot.addItem(region)
@@ -175,6 +182,7 @@ class LabelLane(QObject):
         self._binding = True
         item.region.setRegion((iv.start, iv.end))
         self._binding = False
+        item.region.setMovable(self.editable and idx == self._active)  # drag only when selected
         item.region.show()
         self._style_region(item.region, selected=idx == self._active)
         if show_text and iv.label:
@@ -192,6 +200,8 @@ class LabelLane(QObject):
         self._intervals[item.idx] = Interval(min(a, b), max(a, b), old.label)
         item.text.setPos((a + b) / 2.0, 0.5)
         self.tier_changed.emit()
+        if item.idx == self._active:
+            self._emit_active()  # keep the cross-lane highlight on the dragged extent
 
     def _emit_active(self) -> None:
         self.label_selected.emit(self.active_interval())
