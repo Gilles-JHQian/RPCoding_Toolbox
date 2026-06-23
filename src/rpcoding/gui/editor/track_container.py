@@ -20,6 +20,7 @@ from rpcoding.core.trial_index import TrialIndex
 from rpcoding.gui.editor.debounce import RangeDebouncer
 from rpcoding.gui.editor.label_lane import LABEL_LANE_HEIGHT, LabelLane
 from rpcoding.gui.editor.render_jobs import build_pyramid_job, build_spectrogram_job
+from rpcoding.gui.editor.selectable_viewbox import SelectableViewBox
 from rpcoding.gui.editor.selection import SelectionModel
 from rpcoding.gui.editor.spectrogram_lane import SpectrogramLane
 from rpcoding.gui.editor.toolbar import EditorToolbar
@@ -79,6 +80,9 @@ class AudioEditor(QWidget):
         self._toolbar.amplitude_changed.connect(self.set_amplitude_scale)
         self._toolbar.save_requested.connect(self.save)
         self._toolbar.back_requested.connect(self.back_requested.emit)
+        self._toolbar.zoom_in_requested.connect(lambda: self.zoom(0.6))
+        self._toolbar.zoom_out_requested.connect(lambda: self.zoom(1.7))
+        self._toolbar.fit_requested.connect(self.fit)
         outer.addWidget(self._toolbar)
 
         body = QHBoxLayout()
@@ -91,10 +95,11 @@ class AudioEditor(QWidget):
         self._ruler = self._add_plot(_RULER_H, axis={"bottom": TimeAxisItem(orientation="bottom")})
         self._ruler.hideAxis("left")
 
-        self._wave_plot = self._add_plot(_LANE_H)
+        self._wave_plot = self._add_plot(_LANE_H, viewbox=SelectableViewBox())
         self._wave_plot.hideAxis("bottom")
         self._owner_vb = self._wave_plot.getViewBox()
         self._owner_vb.setMouseEnabled(x=True, y=False)
+        self._owner_vb.region_selected.connect(self._on_drag_select)
         self.waveform = WaveformLane(self._wave_plot, theme)
 
         self._spec_plot = self._add_plot(_LANE_H)
@@ -108,11 +113,10 @@ class AudioEditor(QWidget):
             plot.getViewBox().setMouseEnabled(x=False, y=False)
         self._base_row = self._row  # first row available for label lanes (after ruler/wave/spec)
 
-        # selection: a movable master span on the waveform, mirrored read-only on other lanes.
+        # selection: a span set by left-drag on the waveform, mirrored read-only across all lanes.
         self._sel = SelectionModel(self)
         self._sel.changed.connect(self._on_selection_changed)
-        self._sel_master = self._make_sel_region(self._wave_plot, movable=True)
-        self._sel_master.sigRegionChangeFinished.connect(self._on_master_region)
+        self._sel_master = self._make_sel_region(self._wave_plot, movable=False)
         self._add_mirror_region(self._spec_plot)
 
         self._debouncer = RangeDebouncer(40, self)
@@ -120,8 +124,8 @@ class AudioEditor(QWidget):
         self._owner_vb.sigXRangeChanged.connect(self._on_x_range)
 
     # ---- layout ----
-    def _add_plot(self, height: int, axis: dict | None = None) -> pg.PlotItem:
-        plot = self._glw.addPlot(row=self._row, col=0, axisItems=axis or {})
+    def _add_plot(self, height: int, axis: dict | None = None, viewbox=None) -> pg.PlotItem:
+        plot = self._glw.addPlot(row=self._row, col=0, axisItems=axis or {}, viewBox=viewbox)
         self._row += 1
         plot.setMinimumHeight(height)
         plot.setMaximumHeight(height)
@@ -155,6 +159,20 @@ class AudioEditor(QWidget):
     def set_amplitude_scale(self, gain: float) -> None:
         self.waveform.set_gain(gain)
 
+    def zoom(self, factor: float) -> None:
+        """Zoom the time axis about the view centre (factor < 1 zooms in)."""
+        t0, t1 = self.visible_range()
+        centre = (t0 + t1) / 2.0
+        half = max((t1 - t0) * factor / 2.0, 1e-4)
+        lo = max(centre - half, 0.0)
+        hi = centre + half
+        if self._duration:
+            hi = min(hi, self._duration)
+        self.set_visible_range(lo, hi)
+
+    def fit(self) -> None:
+        self.set_visible_range(0.0, self._duration or 1.0)
+
     def set_db_range(self, lo: float, hi: float) -> None:
         self.spectrogram.set_db_levels(lo, hi)
 
@@ -167,6 +185,10 @@ class AudioEditor(QWidget):
     def add_label_lane(self, name: str, editable: bool = False) -> LabelLane:
         plot = self._add_plot(LABEL_LANE_HEIGHT)
         plot.hideAxis("bottom")
+        # Label lanes carry no meaningful y scale: drop the numeric ticks, keep the track name.
+        left = plot.getAxis("left")
+        left.setStyle(showValues=False)
+        left.setLabel(name + (" ✎" if editable else ""))
         plot.setXLink(self._wave_plot)
         plot.getViewBox().setMouseEnabled(x=False, y=False)
         lane = LabelLane(plot, name, self._theme, editable=editable)
@@ -274,6 +296,8 @@ class AudioEditor(QWidget):
             self.save()
         elif ctrl and key == Qt.Key.Key_B:
             self._create_label_from_selection()
+        elif key == Qt.Key.Key_Escape:
+            self.close()
         elif key == Qt.Key.Key_Tab:
             self._navigate(1)
         elif key == Qt.Key.Key_Backtab:
@@ -296,13 +320,23 @@ class AudioEditor(QWidget):
         iv = self._focus_lane.select_step(step)
         if iv is not None:
             self.set_selection((iv.start, iv.end))
+            self._center_on(iv.start, iv.end)
+
+    def _center_on(self, a: float, b: float) -> None:
+        """Scroll the view to show [a, b] (keeping the current zoom width) if it's off-screen."""
+        t0, t1 = self.visible_range()
+        if t0 <= a and b <= t1:
+            return
+        width = max(t1 - t0, b - a)
+        centre = (a + b) / 2.0
+        self.set_visible_range(max(centre - width / 2.0, 0.0), centre + width / 2.0)
 
     # ---- selection ----
-    def _on_master_region(self) -> None:
-        if self._sel_updating:
-            return
-        a, b = self._sel_master.getRegion()
-        self._sel.set_span((a, b))
+    def _on_drag_select(self, x0: float, x1: float) -> None:
+        if abs(x1 - x0) < 1e-6:  # a plain click clears the selection
+            self.set_selection(None)
+        else:
+            self.set_selection((min(x0, x1), max(x0, x1)))
 
     def _on_selection_changed(self, span) -> None:
         self._sel_updating = True
@@ -322,6 +356,7 @@ class AudioEditor(QWidget):
             self._trial_panel.set_trial(self._trial_index.at(mid))
         elif span is None:
             self._trial_panel.set_trial(None)
+        self._toolbar.set_selection_text(span)
         self.selection_changed.emit(span)
 
     # ---- render ----
