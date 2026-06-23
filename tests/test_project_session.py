@@ -128,6 +128,89 @@ def test_staleness_when_first_stims_edited(tmp_path):
     assert s.effective_state(Step.MAKE_EVENTS) == EffectiveState.STALE
 
 
+def test_file_based_completion_without_manifest(tmp_path):
+    """A subject processed by the legacy pipeline (outputs on disk, no manifest) shows green."""
+    s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")
+    rd = s.results_dir
+    (rd / paths.MFA_DIRNAME).mkdir(parents=True)
+    for name in (
+        paths.ALLBLOCKS_WAV,
+        paths.TRIALINFO_MAT,
+        paths.FIRST_STIMS_TXT,
+        paths.CUE_EVENTS_TXT,
+        paths.CONDITION_EVENTS_TXT,
+        paths.RESP_WORDS_ERRORS_TXT,
+    ):
+        (rd / name).write_bytes(b"x")
+    (rd / paths.MFA_DIRNAME / "mfa_stim_words.txt").write_bytes(b"x")
+
+    st = s.effective_states()
+    for step in (
+        Step.CREATE_RESULTS,
+        Step.CONCAT_WAVS,
+        Step.BUILD_TRIALINFO,
+        Step.MARK_FIRST_STIMS,
+        Step.MAKE_EVENTS,
+        Step.RUN_MFA,
+        Step.RESPONSE_CODING,
+    ):
+        assert st[step] == EffectiveState.DONE, step
+    # write-Trials leaves no detectable artifact -> not auto-detected
+    assert st[Step.WRITE_TRIALS] == EffectiveState.NOT_STARTED
+    done, total, rep = s.summary()
+    assert (done, total) == (7, 9) and rep == EffectiveState.NOT_STARTED
+
+
+def test_disk_presence_overrides_error_record(tmp_path):
+    """A leftover error record must not hide a step whose output is present (file = done)."""
+    s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")
+    s.results_dir.mkdir(parents=True)
+    (s.results_dir / paths.ALLBLOCKS_WAV).write_bytes(b"x")
+    s.record_error(Step.CONCAT_WAVS, "boom")
+    assert s.effective_state(Step.CONCAT_WAVS) == EffectiveState.DONE
+
+
+def test_error_shown_only_without_output(tmp_path):
+    s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")
+    s.record_error(Step.CONCAT_WAVS, "boom")  # no allblocks.wav on disk
+    assert s.effective_state(Step.CONCAT_WAVS) == EffectiveState.ERROR
+
+
+def test_fingerprint_tolerates_oserror(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    from rpcoding.core import manifest
+
+    p = tmp_path / "x"
+    p.write_bytes(b"x")
+
+    def boom(self, *a, **k):  # simulate a Box cloud-sync placeholder (WinError 1006)
+        raise OSError(1006, "volume changed")
+
+    monkeypatch.setattr(Path, "stat", boom)
+    assert manifest.fingerprint(p) is None
+
+
+def test_summary_all_done_when_trials_recorded(tmp_path):
+    s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")
+    rd = s.results_dir
+    (rd / paths.MFA_DIRNAME).mkdir(parents=True)
+    for name in (
+        paths.ALLBLOCKS_WAV,
+        paths.TRIALINFO_MAT,
+        paths.FIRST_STIMS_TXT,
+        paths.CUE_EVENTS_TXT,
+        paths.CONDITION_EVENTS_TXT,
+        paths.RESP_WORDS_ERRORS_TXT,
+    ):
+        (rd / name).write_bytes(b"x")
+    (rd / paths.MFA_DIRNAME / "mfa_stim_words.txt").write_bytes(b"x")
+    s.record_done(Step.DENOISE)
+    s.record_done(Step.WRITE_TRIALS)
+    done, total, rep = s.summary()
+    assert (done, total) == (9, 9) and rep == EffectiveState.DONE
+
+
 # ---- runner ----
 
 

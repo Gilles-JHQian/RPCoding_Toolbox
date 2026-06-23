@@ -19,6 +19,21 @@ def _now() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _exists(p: Path) -> bool:
+    """``p.exists()`` that treats an un-stat-able cloud placeholder (OSError) as absent."""
+    try:
+        return p.exists()
+    except OSError:
+        return False
+
+
+def _is_dir(p: Path) -> bool:
+    try:
+        return p.is_dir()
+    except OSError:
+        return False
+
+
 @dataclass
 class SubjectSession:
     config: AppConfig
@@ -84,6 +99,30 @@ class SubjectSession:
     def _outputs_present(self, spec: StepSpec) -> bool:
         return all(fingerprint(self.output_path(o)) is not None for o in spec.outputs)
 
+    def _completed_on_disk(self, step: Step) -> bool | None:
+        """Whether a step's output exists on disk, or ``None`` if it leaves no detectable artifact.
+
+        This lets the dashboard mark steps green for subjects already processed by the legacy
+        pipeline (no manifest). ``None`` (denoise, write-Trials) falls back to the manifest record.
+        """
+        rd = self.results_dir
+        if step == Step.CREATE_RESULTS:
+            return _is_dir(rd)
+        if step == Step.CONCAT_WAVS:
+            return _exists(rd / paths.ALLBLOCKS_WAV)
+        if step == Step.BUILD_TRIALINFO:
+            return _exists(rd / paths.TRIALINFO_MAT)
+        if step == Step.MARK_FIRST_STIMS:
+            return _exists(rd / paths.FIRST_STIMS_TXT)
+        if step == Step.MAKE_EVENTS:
+            return _exists(rd / paths.CUE_EVENTS_TXT) and _exists(rd / paths.CONDITION_EVENTS_TXT)
+        if step == Step.RUN_MFA:
+            mfa = rd / paths.MFA_DIRNAME
+            return _is_dir(mfa) and _exists(mfa / "mfa_stim_words.txt")
+        if step == Step.RESPONSE_CODING:
+            return _exists(rd / paths.RESP_WORDS_ERRORS_TXT) or _exists(rd / "response_coding.txt")
+        return None  # DENOISE, WRITE_TRIALS: no reliable on-disk signal
+
     def effective_state(
         self, step: Step, _memo: dict[Step, EffectiveState] | None = None
     ) -> EffectiveState:
@@ -95,17 +134,27 @@ class SubjectSession:
         rec = self.manifest.steps.get(str(step), StepRecord())
         dep_states = [self.effective_state(d, _memo) for d in spec.deps]
         deps_done = all(s == EffectiveState.DONE for s in dep_states)
+        any_dep_stale = any(s == EffectiveState.STALE for s in dep_states)
 
-        if rec.state == "error":
-            st = EffectiveState.ERROR
-        elif rec.state == "done":
-            stale = (
-                not self._outputs_present(spec)
-                or self._dep_fingerprints(step) != rec.dep_inputs
-                or not deps_done
-                or any(s == EffectiveState.STALE for s in dep_states)
-            )
+        present = self._completed_on_disk(step)
+        done = (rec.state == "done") if present is None else present
+
+        # The output existing on disk wins over a leftover error record (file-existence = done),
+        # so a step is never shown as Error once its artifact is present.
+        if done:
+            if rec.state == "done":
+                # provenance available: a content-edit upstream marks this stale
+                stale = (
+                    self._dep_fingerprints(step) != rec.dep_inputs or not deps_done or any_dep_stale
+                )
+            else:
+                # outputs exist but we never ran it (pre-existing): only structural staleness
+                stale = not deps_done or any_dep_stale
             st = EffectiveState.STALE if stale else EffectiveState.DONE
+        elif rec.state == "error":
+            st = EffectiveState.ERROR
+        elif present is not None and rec.state == "done":
+            st = EffectiveState.STALE  # recorded done but the output is now gone
         elif not deps_done:
             st = EffectiveState.BLOCKED
         elif spec.kind == StepKind.MANUAL:
@@ -118,3 +167,22 @@ class SubjectSession:
     def effective_states(self) -> dict[Step, EffectiveState]:
         memo: dict[Step, EffectiveState] = {}
         return {s: self.effective_state(s, memo) for s in STEP_SPECS}
+
+    def summary(self) -> tuple[int, int, EffectiveState]:
+        """``(done, total, representative_state)`` for the subject-list row."""
+        states = list(self.effective_states().values())
+        total = len(states)
+        done = sum(1 for s in states if s == EffectiveState.DONE)
+        if EffectiveState.ERROR in states:
+            rep = EffectiveState.ERROR
+        elif done == total:
+            rep = EffectiveState.DONE
+        elif EffectiveState.STALE in states:
+            rep = EffectiveState.STALE
+        else:
+            rep = EffectiveState.NOT_STARTED
+        return done, total, rep
+
+    def step_error(self, step: Step) -> str | None:
+        """The recorded error message for a step (for the dashboard chip tooltip), if any."""
+        return self.manifest.steps.get(str(step), StepRecord()).error
