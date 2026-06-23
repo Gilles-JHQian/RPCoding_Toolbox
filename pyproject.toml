@@ -65,6 +65,7 @@ select = ["E", "F", "W", "I", "UP", "B"]
 # imports follow pytest.importorskip guards (skip the module when PySide6 is absent)
 "tests/test_gui_shell.py" = ["E402"]
 "tests/test_audio_editor.py" = ["E402"]
+"tests/test_label_tracks.py" = ["E402"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
