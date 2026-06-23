@@ -183,3 +183,66 @@ def test_audio_click_sets_cursor(qtbot):
     assert ed._cursor_master.value() == 7.5
     ed.set_selection((1.0, 2.0))  # a span supersedes the cursor
     assert ed.selection() == (1.0, 2.0)
+
+
+def test_clipboard_copy_paste(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", [Interval(2, 4, "x")]), True)])
+    resp = ed._focus_lane
+    ed._select_only(resp)
+    resp.select_at(3.0)
+    ed._copy_active()
+    assert ed._clipboard.label == "x"
+    ed.set_cursor(10.0)
+    ed._paste()  # paste at the cursor, preserving duration
+    pasted = [iv for iv in resp.intervals() if iv.start == 10.0]
+    assert pasted and pasted[0].end == 12.0 and pasted[0].label == "x"
+
+
+def test_clipboard_cut(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", [Interval(2, 4, "x")]), True)])
+    resp = ed._focus_lane
+    ed._select_only(resp)
+    resp.select_at(3.0)
+    ed._cut_active()
+    assert ed._clipboard.label == "x" and resp.intervals() == []
+
+
+def test_undo_redo(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", []), True)])
+    resp = ed._focus_lane
+    ed.set_selection((1.0, 2.0))
+    ed._create_label_from_selection()
+    assert len(resp.intervals()) == 1
+    ed._undo()
+    assert resp.intervals() == []
+    ed._redo()
+    assert len(resp.intervals()) == 1
+
+
+def test_resize_selection_region(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", []), True)])
+    ed.set_selection((5.0, 10.0))
+    ed._sel_master.setRegion((5.0, 15.0))  # drag an edge -> resize -> model follows
+    assert ed.selection() == (5.0, 15.0)
+
+
+def test_label_drag_updates_highlight_live(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", [Interval(2, 4, "x")]), True)])
+    resp = ed._focus_lane
+    resp.set_view(0.0, 10.0, 800)
+    ed._select_only(resp)
+    resp.select_at(3.0)
+    assert ed.selection() == (2.0, 4.0)
+    item = next(it for it in resp._pool[: resp._used] if it.idx == resp._active)
+    item.region.setRegion((5.0, 7.0))  # mid-drag region change -> highlight follows live
+    assert ed.selection() == (5.0, 7.0)

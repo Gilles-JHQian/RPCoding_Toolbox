@@ -172,7 +172,10 @@ class LabelLane(QObject):
             self.plot.addItem(text)
             item = _PoolItem(region, text)
             if self.editable:
-                region.sigRegionChangeFinished.connect(lambda _r, it=item: self._on_drag(it))
+                region.sigRegionChanged.connect(lambda _r, it=item: self._on_region_changing(it))
+                region.sigRegionChangeFinished.connect(
+                    lambda _r, it=item: self._on_region_finished(it)
+                )
             self._pool.append(item)
         return self._pool[slot]
 
@@ -192,16 +195,22 @@ class LabelLane(QObject):
         else:
             item.text.hide()
 
-    def _on_drag(self, item: _PoolItem) -> None:
+    def _on_region_changing(self, item: _PoolItem) -> None:
+        """Live during a drag: update the interval + cross-lane highlight (no tier_changed yet)."""
         if self._binding or not (0 <= item.idx < len(self._intervals)):
             return
         a, b = item.region.getRegion()
         old = self._intervals[item.idx]
         self._intervals[item.idx] = Interval(min(a, b), max(a, b), old.label)
         item.text.setPos((a + b) / 2.0, 0.5)
-        self.tier_changed.emit()
         if item.idx == self._active:
-            self._emit_active()  # keep the cross-lane highlight on the dragged extent
+            self._emit_active()  # highlight follows the drag in real time
+
+    def _on_region_finished(self, item: _PoolItem) -> None:
+        """Drag released: the interval is already current; mark the tier changed (save/undo)."""
+        if self._binding or not (0 <= item.idx < len(self._intervals)):
+            return
+        self.tier_changed.emit()
 
     def _emit_active(self) -> None:
         self.label_selected.emit(self.active_interval())
