@@ -11,7 +11,7 @@ from pathlib import Path
 import pyqtgraph as pg
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QVBoxLayout, QWidget
 
 from rpcoding.core.audio.io import duration_seconds
 from rpcoding.core.audio.render.cache import AudioRenderCache
@@ -74,6 +74,7 @@ class AudioEditor(QWidget):
         self._lane_plots: list[pg.PlotItem] = []
         self._lane_labels: list[pg.LabelItem] = []
         self._focus_lane: LabelLane | None = None
+        self._active_lane: LabelLane | None = None  # lane whose label is currently selected
         self._trial_index: TrialIndex | None = None
         self._save_path: Path | None = None
         self._row = 0
@@ -95,7 +96,9 @@ class AudioEditor(QWidget):
         outer.addLayout(body, 1)
         self._glw = pg.GraphicsLayoutWidget()
         body.addWidget(self._glw, 1)
+        self._glw.scene().sigMouseClicked.connect(self._on_scene_click)
         self._trial_panel = TrialInfoPanel()
+        self._trial_panel.error_code_picked.connect(self._on_error_code)
         body.addWidget(self._trial_panel)
 
         self._glw.ci.layout.setColumnFixedWidth(0, _NAME_W)  # the track-name column
@@ -240,6 +243,7 @@ class AudioEditor(QWidget):
         plot.setXLink(self._wave_plot)
         self._wire_vb(plot.getViewBox())
         lane = LabelLane(plot, name, self._theme, editable=editable)
+        lane.label_selected.connect(lambda iv, ln=lane: self._on_label_selected(ln, iv))
         self._label_lanes.append(lane)
         self._lane_plots.append(plot)
         self._lane_labels.append(plot._name_label)
@@ -351,13 +355,14 @@ class AudioEditor(QWidget):
             self._create_label_from_selection()
         elif key == Qt.Key.Key_Escape:
             self.close()
+        elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            self._rename_active()
         elif key == Qt.Key.Key_Tab:
             self._navigate(1)
         elif key == Qt.Key.Key_Backtab:
             self._navigate(-1)
         elif key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
-            if self._focus_lane is not None:
-                self._focus_lane.delete_active()
+            self._delete_active()
         else:
             super().keyPressEvent(event)
 
@@ -365,15 +370,66 @@ class AudioEditor(QWidget):
         span = self._sel.span()
         if span is None or self._focus_lane is None:
             return
+        self._select_only(self._focus_lane)
         self._focus_lane.create(span[0], span[1])
 
     def _navigate(self, step: int) -> None:
         if self._focus_lane is None:
             return
+        self._select_only(self._focus_lane)
         iv = self._focus_lane.select_step(step)
         if iv is not None:
-            self.set_selection((iv.start, iv.end))
             self._center_on(iv.start, iv.end)
+
+    # ---- label selection / editing ----
+    def _select_only(self, lane: LabelLane | None) -> None:
+        """Make ``lane`` the active selection, clearing any selection on the other lanes."""
+        for other in self._label_lanes:
+            if other is not lane:
+                other.select(-1)
+        self._active_lane = lane
+
+    def _on_scene_click(self, ev) -> None:
+        if ev.button() != Qt.MouseButton.LeftButton:
+            return
+        pos = ev.scenePos()
+        for lane in self._label_lanes:
+            vb = lane.plot.getViewBox()
+            if vb.sceneBoundingRect().contains(pos):
+                self._select_only(lane)
+                lane.select_at(vb.mapSceneToView(pos).x())  # emits label_selected -> highlight
+                return
+        self._select_only(None)  # clicked an audio lane / empty -> deselect labels
+        self.set_selection(None)
+
+    def _on_label_selected(self, lane: LabelLane, iv) -> None:
+        if lane is not self._active_lane:
+            return  # an incidental deselect on a non-active lane
+        self.set_selection((iv.start, iv.end) if iv is not None else None)
+
+    def _rename_active(self) -> None:
+        lane = self._active_lane
+        if lane is None or not lane.editable or lane.active_interval() is None:
+            return
+        text, ok = QInputDialog.getText(
+            self, "Rename label", "Label:", text=lane.active_interval().label
+        )
+        if ok:
+            lane.rename_active(text)
+
+    def _on_error_code(self, code: str) -> None:
+        lane = self._active_lane
+        if lane is None or not lane.editable:
+            return
+        iv = lane.active_interval()
+        if iv is None:
+            return
+        lane.rename_active(f"{iv.label}/{code}" if iv.label else code)  # append the code
+
+    def _delete_active(self) -> None:
+        lane = self._active_lane
+        if lane is not None and lane.editable:
+            lane.delete_active()
 
     def _center_on(self, a: float, b: float) -> None:
         """Scroll the view to show [a, b] (keeping the current zoom width) if it's off-screen."""
@@ -386,10 +442,10 @@ class AudioEditor(QWidget):
 
     # ---- selection ----
     def _on_drag_select(self, x0: float, x1: float) -> None:
-        if abs(x1 - x0) < 1e-6:  # a plain click clears the selection
-            self.set_selection(None)
-        else:
-            self.set_selection((min(x0, x1), max(x0, x1)))
+        if abs(x1 - x0) < 1e-6:
+            return  # degenerate drag; real clicks arrive via the scene's sigMouseClicked
+        self._select_only(None)  # a fresh time-drag clears any selected label
+        self.set_selection((min(x0, x1), max(x0, x1)))
 
     def _on_selection_changed(self, span) -> None:
         self._sel_updating = True
