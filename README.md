@@ -8,6 +8,9 @@ MATLAB outputs (golden-file verified).
 
 Supported tasks: `LexicalDecRepNoDelay`, `LexicalDecRepDelay`, `Uniqueness_Point`.
 
+**Usage:** see the [User Guide](docs/USER_GUIDE.md) for the GUI workflow, settings, batch runs, the
+annotation editor, and the headless CLI.
+
 ## Status
 
 Early development. See the implementation plan and progress in the project notes. The GUI is built on
