@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -42,6 +42,16 @@ class Dashboard(QWidget):
         self._theme = theme
         self._session: SubjectSession | None = None
         self._active: tuple | None = None  # (thread, worker) kept alive
+        self._scan_token = 0
+        # Subject summaries are computed one-per-event-loop-tick so a big (cloud-synced) scan never
+        # blocks the UI; a child QTimer is auto-cancelled on teardown.
+        self._summary_queue: list[str] = []
+        self._summary_total = 0
+        self._summary_done = 0
+        self._summary_timer = QTimer(self)
+        self._summary_timer.setSingleShot(True)
+        self._summary_timer.setInterval(0)
+        self._summary_timer.timeout.connect(self._process_next_summary)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -166,12 +176,30 @@ class Dashboard(QWidget):
         return Task.from_str(self._task_combo.currentText())
 
     def _scan(self) -> None:
+        self._scan_token += 1
         subs = scan_subjects(paths.d_data_dir(self._config.droot, self.current_task))
         self._subjects.set_subjects(subs)
-        for sid in subs:
+        self._subj_count.setText(f"{len(subs)} found")
+        self._summary_queue = list(subs)
+        self._summary_total = len(subs)
+        self._summary_done = 0
+        if subs:
+            self._summary_timer.start()
+
+    def _process_next_summary(self) -> None:
+        if not self._summary_queue:
+            return
+        sid = self._summary_queue.pop(0)
+        try:
             done, total, state = SubjectSession(self._config, self.current_task, sid).summary()
             self._subjects.set_summary(sid, done, total, state)
-        self._subj_count.setText(f"{len(subs)} found")
+        except OSError:
+            pass  # a cloud-sync placeholder we can't read yet; skip it this pass
+        self._summary_done += 1
+        n, k = self._summary_total, self._summary_done
+        self._subj_count.setText(f"{n} found" if k >= n else f"{n} found · {k}/{n}…")
+        if self._summary_queue:
+            self._summary_timer.start()  # next subject on the next event-loop tick
 
     def _on_task_changed(self) -> None:
         self._session = None

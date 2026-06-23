@@ -10,27 +10,49 @@ class EditorToolbar(QFrame):
     amplitude_changed = Signal(float)  # gain multiplier
     save_requested = Signal()
     back_requested = Signal()
+    zoom_in_requested = Signal()
+    zoom_out_requested = Signal()
+    fit_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("TopBar")
         lay = QHBoxLayout(self)
         lay.setContentsMargins(8, 4, 8, 4)
+        lay.setSpacing(6)
 
         self._back = QPushButton("← Back")
         self._back.clicked.connect(self.back_requested.emit)
         lay.addWidget(self._back)
 
-        lay.addWidget(QLabel("Amplitude"))
+        for glyph, tip, sig in (
+            ("🔍＋", "Zoom in", self.zoom_in_requested),
+            ("🔍－", "Zoom out", self.zoom_out_requested),
+            ("Fit", "Fit whole file", self.fit_requested),
+        ):
+            btn = QPushButton(glyph)
+            btn.setToolTip(tip)
+            btn.clicked.connect(sig.emit)
+            lay.addWidget(btn)
+
+        lay.addWidget(QLabel("Amp"))
         self._amp = QSlider(Qt.Orientation.Horizontal)
         self._amp.setRange(10, 1000)  # 0.1x .. 10x
         self._amp.setValue(100)
-        self._amp.setFixedWidth(140)
+        self._amp.setFixedWidth(120)
         self._amp.valueChanged.connect(lambda v: self.amplitude_changed.emit(v / 100.0))
         lay.addWidget(self._amp)
 
+        self._selection = QLabel("")
+        self._selection.setObjectName("Meta")
+        lay.addWidget(self._selection)
+
         lay.addStretch(1)
-        self._save = QPushButton("Save (Ctrl+S)")
+        self._hint = QLabel("drag waveform to select · Ctrl+B to label")
+        self._hint.setObjectName("Meta")
+        lay.addWidget(self._hint)
+
+        self._save = QPushButton("💾 Save (Ctrl+S)")
         self._save.setObjectName("Primary")
         self._save.clicked.connect(self.save_requested.emit)
         lay.addWidget(self._save)
@@ -56,3 +78,10 @@ class EditorToolbar(QFrame):
 
     def set_status(self, msg: str) -> None:
         self._status.setText(msg)
+
+    def set_selection_text(self, span) -> None:
+        if span is None:
+            self._selection.setText("")
+        else:
+            a, b = span
+            self._selection.setText(f"{a:.3f} – {b:.3f} s  ({b - a:.3f})")

@@ -1,9 +1,9 @@
-"""Main window: a stacked dashboard + audio editor, with theme switching."""
+"""Main window (the dashboard) plus a separate top-level annotation-editor window."""
 
 from __future__ import annotations
 
-from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QApplication, QMainWindow
 
 from rpcoding.core import paths
 from rpcoding.core.config import AppConfig
@@ -17,26 +17,23 @@ class MainWindow(QMainWindow):
     def __init__(self, config: AppConfig, theme: Theme = DARK_THEME):
         super().__init__()
         self.setWindowTitle("RPCoding Toolbox")
-        self.resize(1100, 720)
+        self.resize(1180, 740)
         self._theme = theme
-
-        self._stack = QStackedWidget()
-        self.setCentralWidget(self._stack)
 
         self._dashboard = Dashboard(config, theme)
         self._dashboard.theme_toggle_requested.connect(self.toggle_theme)
         self._dashboard.open_editor.connect(self._open_editor)
-        self._stack.addWidget(self._dashboard)
+        self.setCentralWidget(self._dashboard)
 
-        self._editor = AudioEditor(theme)
+        # The editor is a separate top-level window (created once, reused), hidden until opened.
+        # Parented to the main window with a Window flag so it's a real window but still owned
+        # (destroyed with the app) rather than leaking.
+        self._editor = AudioEditor(theme, parent=self)
+        self._editor.setWindowFlag(Qt.WindowType.Window, True)
+        self._editor.resize(1240, 820)
         self._editor.saved.connect(self._on_editor_saved)
-        self._editor.back_requested.connect(self._show_dashboard)
-        self._stack.addWidget(self._editor)
+        self._editor.back_requested.connect(self._close_editor)
         self._editing: tuple | None = None  # (SubjectSession, Step) currently open in the editor
-
-        # Esc returns to the dashboard from the editor.
-        back = QShortcut(QKeySequence("Escape"), self)
-        back.activated.connect(self._show_dashboard)
 
         self.apply_theme(theme)
 
@@ -54,12 +51,16 @@ class MainWindow(QMainWindow):
     def _open_editor(self, session, step) -> None:  # noqa: ANN001 - Qt signal payloads
         self._editing = (session, step)
         specs, save_path = tiers_for_step(session.results_dir, step)
+        title = f"{session.subject} · {step.value} — Annotation Editor"
+        self._editor.setWindowTitle(title)
         self._editor.set_tiers(specs)
         self._editor.configure_save(save_path)
         wav = session.output_path(paths.ALLBLOCKS_WAV)
         if wav.exists():
             self._editor.load(wav, session.results_dir / ".rpcoding" / "cache")
-        self._stack.setCurrentWidget(self._editor)
+        self._editor.show()
+        self._editor.raise_()
+        self._editor.activateWindow()
         self._editor.setFocus()
 
     def _on_editor_saved(self) -> None:
@@ -69,5 +70,9 @@ class MainWindow(QMainWindow):
         session.record_done(step)
         self._dashboard.refresh()
 
-    def _show_dashboard(self) -> None:
-        self._stack.setCurrentWidget(self._dashboard)
+    def _close_editor(self) -> None:
+        self._editor.hide()
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self._editor.close()
+        super().closeEvent(event)

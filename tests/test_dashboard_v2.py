@@ -113,8 +113,8 @@ def test_dashboard_file_based_progress(qtbot, tmp_path):
     dash = Dashboard(cfg, DARK_THEME)
     qtbot.addWidget(dash)
     dash._scan()
-    # create-results + concat detected on disk -> 2/9
-    assert dash._subjects._rows["D1"]._prog.text() == "2/9"
+    # summaries fill in asynchronously (one per event-loop tick); create-results + concat -> 2/9
+    qtbot.waitUntil(lambda: dash._subjects._rows["D1"]._prog.text() == "2/9", timeout=3000)
 
 
 def test_dashboard_manual_step_opens_editor(qtbot, tmp_path):

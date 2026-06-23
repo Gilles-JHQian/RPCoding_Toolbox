@@ -1,6 +1,14 @@
-"""Label lane: renders a Tier as draggable regions + text; create / edit / select / navigate."""
+"""Label lane with viewport virtualization.
+
+A tier may hold hundreds of intervals (cue/condition/MFA tiers ~ one per trial). Creating a
+graphics item per interval melts the scene, so this lane keeps the data in a plain list and only
+binds a small recycled pool of region+text items to the intervals currently in view (capped, with
+text shown only when sparse). Pan/zoom rebinds the pool; cost is ~ visible labels, not total.
+"""
 
 from __future__ import annotations
+
+import math
 
 import pyqtgraph as pg
 from PySide6.QtCore import QObject, Signal
@@ -9,17 +17,19 @@ from PySide6.QtGui import QColor
 from rpcoding.core.labels import Interval, Tier
 from rpcoding.gui.theme import Theme
 
-LABEL_LANE_HEIGHT = 40
+LABEL_LANE_HEIGHT = 44
 _UNSEL = "#3a4250"
+_MAX_RENDER = 120  # hard cap on region items rendered per lane (sampled beyond this)
+_TEXT_LIMIT = 80  # show interval text only when at most this many are rendered
 
 
-class _LabelItem:
-    __slots__ = ("region", "text", "interval")
+class _PoolItem:
+    __slots__ = ("region", "text", "idx")
 
-    def __init__(self, region, text, interval: Interval):
+    def __init__(self, region, text):
         self.region = region
         self.text = text
-        self.interval = interval
+        self.idx = -1
 
 
 class LabelLane(QObject):
@@ -34,8 +44,12 @@ class LabelLane(QObject):
         self.name = name
         self.editable = editable
         self._theme = theme
-        self._items: list[_LabelItem] = []
-        self._active = -1
+        self._intervals: list[Interval] = []
+        self._active = -1  # index into _intervals
+        self._pool: list[_PoolItem] = []
+        self._used = 0
+        self._view = (0.0, 1.0)
+        self._binding = False
 
         vb = plot.getViewBox()
         vb.setMenuEnabled(False)
@@ -45,95 +59,137 @@ class LabelLane(QObject):
 
     # ---- tier I/O ----
     def set_tier(self, tier: Tier) -> None:
-        self.clear()
-        for iv in tier.intervals:
-            self._add_item(iv)
+        self._intervals = list(tier.intervals)
+        self._active = -1
+        self._render()
 
     def get_tier(self) -> Tier:
-        intervals = sorted((it.interval for it in self._items), key=lambda i: i.start)
-        return Tier(self.name, list(intervals))
+        return Tier(self.name, sorted(self._intervals, key=lambda i: i.start))
 
     def intervals(self) -> list[Interval]:
-        return [it.interval for it in self._items]
+        return list(self._intervals)
 
     # ---- editing ----
     def create(self, start: float, end: float, label: str = "") -> Interval:
         iv = Interval(min(start, end), max(start, end), label)
-        self._add_item(iv)
+        self._intervals.append(iv)
+        self._active = len(self._intervals) - 1
         self.tier_changed.emit()
-        self.select(len(self._items) - 1)
+        self._render()
+        self._emit_active()
         return iv
 
     def delete_active(self) -> None:
-        if not (0 <= self._active < len(self._items)):
+        if not (0 <= self._active < len(self._intervals)):
             return
-        item = self._items.pop(self._active)
-        self.plot.removeItem(item.region)
-        self.plot.removeItem(item.text)
-        self._active = min(self._active, len(self._items) - 1)
+        del self._intervals[self._active]
+        self._active = min(self._active, len(self._intervals) - 1)
         self.tier_changed.emit()
+        self._render()
         self._emit_active()
 
     def rename_active(self, label: str) -> None:
-        if not (0 <= self._active < len(self._items)):
+        if not (0 <= self._active < len(self._intervals)):
             return
-        item = self._items[self._active]
-        item.interval = Interval(item.interval.start, item.interval.end, label)
-        item.text.setText(label)
+        iv = self._intervals[self._active]
+        self._intervals[self._active] = Interval(iv.start, iv.end, label)
         self.tier_changed.emit()
+        self._render()
 
     # ---- selection / navigation ----
     def select(self, index: int) -> None:
-        self._active = index if 0 <= index < len(self._items) else -1
-        for i, it in enumerate(self._items):
-            self._style_region(it.region, selected=(i == self._active))
+        self._active = index if 0 <= index < len(self._intervals) else -1
+        self._render()
         self._emit_active()
 
     def active_interval(self) -> Interval | None:
-        return self._items[self._active].interval if 0 <= self._active < len(self._items) else None
+        if 0 <= self._active < len(self._intervals):
+            return self._intervals[self._active]
+        return None
 
     def select_step(self, step: int) -> Interval | None:
         """Select next (step>0) / previous (step<0) label by start time; wraps."""
-        if not self._items:
+        if not self._intervals:
             return None
-        order = sorted(range(len(self._items)), key=lambda i: self._items[i].interval.start)
+        order = sorted(range(len(self._intervals)), key=lambda i: self._intervals[i].start)
         if self._active < 0:
             new = order[0] if step > 0 else order[-1]
         else:
             pos = order.index(self._active)
             new = order[(pos + (1 if step > 0 else -1)) % len(order)]
         self.select(new)
-        return self._items[new].interval
+        return self._intervals[new]
 
     def clear(self) -> None:
-        for it in self._items:
-            self.plot.removeItem(it.region)
-            self.plot.removeItem(it.text)
-        self._items = []
+        for item in self._pool:
+            self.plot.removeItem(item.region)
+            self.plot.removeItem(item.text)
+        self._pool = []
+        self._used = 0
+        self._intervals = []
         self._active = -1
 
+    # ---- virtualized rendering ----
     def set_view(self, t0: float, t1: float, px: int) -> None:
-        # Regions live in data coordinates; pyqtgraph repositions them on pan/zoom automatically.
-        return
+        self._view = (t0, t1)
+        self._render()
 
-    # ---- internals ----
-    def _add_item(self, iv: Interval) -> _LabelItem:
-        region = pg.LinearRegionItem(values=[iv.start, iv.end], movable=self.editable)
-        region.setZValue(10)
-        text = pg.TextItem(iv.label, anchor=(0.5, 0.5), color=self._theme.color("text-pri"))
-        text.setPos((iv.start + iv.end) / 2.0, 0.5)
-        self.plot.addItem(region)
-        self.plot.addItem(text)
-        item = _LabelItem(region, text, iv)
-        if self.editable:
-            region.sigRegionChangeFinished.connect(lambda _r, it=item: self._on_region_changed(it))
-        self._items.append(item)
-        self._style_region(region, selected=False)
-        return item
+    def _visible_indices(self) -> list[int]:
+        t0, t1 = self._view
+        idxs = [i for i, iv in enumerate(self._intervals) if iv.end >= t0 and iv.start <= t1]
+        if len(idxs) > _MAX_RENDER:
+            stride = math.ceil(len(idxs) / _MAX_RENDER)
+            sampled = idxs[::stride]
+            if 0 <= self._active < len(self._intervals) and self._active in idxs:
+                if self._active not in sampled:
+                    sampled.append(self._active)
+            idxs = sampled
+        return idxs
 
-    def _on_region_changed(self, item: _LabelItem) -> None:
+    def _render(self) -> None:
+        idxs = self._visible_indices()
+        show_text = len(idxs) <= _TEXT_LIMIT
+        for slot, idx in enumerate(idxs):
+            self._bind(self._slot(slot), idx, show_text)
+        for slot in range(len(idxs), self._used):
+            self._pool[slot].region.hide()
+            self._pool[slot].text.hide()
+        self._used = len(idxs)
+
+    def _slot(self, slot: int) -> _PoolItem:
+        while slot >= len(self._pool):
+            region = pg.LinearRegionItem(values=[0, 0], movable=self.editable)
+            region.setZValue(10)
+            text = pg.TextItem("", anchor=(0.5, 0.5), color=self._theme.color("text-pri"))
+            self.plot.addItem(region)
+            self.plot.addItem(text)
+            item = _PoolItem(region, text)
+            if self.editable:
+                region.sigRegionChangeFinished.connect(lambda _r, it=item: self._on_drag(it))
+            self._pool.append(item)
+        return self._pool[slot]
+
+    def _bind(self, item: _PoolItem, idx: int, show_text: bool) -> None:
+        iv = self._intervals[idx]
+        item.idx = idx
+        self._binding = True
+        item.region.setRegion((iv.start, iv.end))
+        self._binding = False
+        item.region.show()
+        self._style_region(item.region, selected=idx == self._active)
+        if show_text and iv.label:
+            item.text.setText(iv.label)
+            item.text.setPos((iv.start + iv.end) / 2.0, 0.5)
+            item.text.show()
+        else:
+            item.text.hide()
+
+    def _on_drag(self, item: _PoolItem) -> None:
+        if self._binding or not (0 <= item.idx < len(self._intervals)):
+            return
         a, b = item.region.getRegion()
-        item.interval = Interval(min(a, b), max(a, b), item.interval.label)
+        old = self._intervals[item.idx]
+        self._intervals[item.idx] = Interval(min(a, b), max(a, b), old.label)
         item.text.setPos((a + b) / 2.0, 0.5)
         self.tier_changed.emit()
 
@@ -151,7 +207,7 @@ class LabelLane(QObject):
 
     def apply_theme(self, theme: Theme) -> None:
         self._theme = theme
-        self.plot.getViewBox().setBackgroundColor(theme.color("panel"))
-        for i, it in enumerate(self._items):
-            self._style_region(it.region, selected=(i == self._active))
-            it.text.setColor(theme.color("text-pri"))
+        self.plot.getViewBox().setBackgroundColor(theme.color("lane-bg"))
+        for item in self._pool[: self._used]:
+            self._style_region(item.region, selected=item.idx == self._active)
+            item.text.setColor(theme.color("text-pri"))
