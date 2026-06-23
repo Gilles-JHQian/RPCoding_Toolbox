@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from rpcoding.core.audio.io import duration_seconds
 from rpcoding.core.audio.render.cache import AudioRenderCache
-from rpcoding.core.labels import Tier
+from rpcoding.core.labels import Tier, write_tier
 from rpcoding.core.trial_index import TrialIndex
 from rpcoding.gui.editor.debounce import RangeDebouncer
 from rpcoding.gui.editor.label_lane import LABEL_LANE_HEIGHT, LabelLane
@@ -52,6 +52,8 @@ class AudioEditor(QWidget):
     selection_changed = Signal(object)
     load_finished = Signal()
     load_failed = Signal(str)
+    saved = Signal()
+    back_requested = Signal()
 
     def __init__(self, theme: Theme = DARK_THEME, parent=None):
         super().__init__(parent)
@@ -63,8 +65,10 @@ class AudioEditor(QWidget):
         self._spec_ok = False
         self._jobs: list = []
         self._label_lanes: list[LabelLane] = []
+        self._lane_plots: list[pg.PlotItem] = []
         self._focus_lane: LabelLane | None = None
         self._trial_index: TrialIndex | None = None
+        self._save_path: Path | None = None
         self._row = 0
         self._sel_updating = False
         self._sel_regions: list[pg.LinearRegionItem] = []
@@ -73,6 +77,8 @@ class AudioEditor(QWidget):
         outer.setContentsMargins(0, 0, 0, 0)
         self._toolbar = EditorToolbar()
         self._toolbar.amplitude_changed.connect(self.set_amplitude_scale)
+        self._toolbar.save_requested.connect(self.save)
+        self._toolbar.back_requested.connect(self.back_requested.emit)
         outer.addWidget(self._toolbar)
 
         body = QHBoxLayout()
@@ -100,6 +106,7 @@ class AudioEditor(QWidget):
         for plot in (self._ruler, self._spec_plot):
             plot.setXLink(self._wave_plot)
             plot.getViewBox().setMouseEnabled(x=False, y=False)
+        self._base_row = self._row  # first row available for label lanes (after ruler/wave/spec)
 
         # selection: a movable master span on the waveform, mirrored read-only on other lanes.
         self._sel = SelectionModel(self)
@@ -164,10 +171,23 @@ class AudioEditor(QWidget):
         plot.getViewBox().setMouseEnabled(x=False, y=False)
         lane = LabelLane(plot, name, self._theme, editable=editable)
         self._label_lanes.append(lane)
+        self._lane_plots.append(plot)
         self._add_mirror_region(plot)
         if editable and self._focus_lane is None:
             self._focus_lane = lane
         return lane
+
+    def clear_tiers(self) -> None:
+        """Remove all label lanes and reset selection/trial state (for reopening on a new step)."""
+        self.set_selection(None)
+        for plot in self._lane_plots:
+            self._glw.removeItem(plot)
+        self._label_lanes = []
+        self._lane_plots = []
+        self._focus_lane = None
+        self._trial_index = None
+        del self._sel_regions[1:]  # keep only the spectrogram mirror (added in __init__)
+        self._row = self._base_row
 
     def set_tiers(
         self,
@@ -175,7 +195,11 @@ class AudioEditor(QWidget):
         cue_name: str = "cue_events",
         condition_name: str = "condition_events",
     ) -> None:
-        """Populate label lanes from ``(name, tier, editable)`` and build the trial index."""
+        """Populate label lanes from ``(name, tier, editable)`` and build the trial index.
+
+        Clears any previously loaded tiers first, so reopening the editor never stacks lanes.
+        """
+        self.clear_tiers()
         by_name: dict[str, Tier] = {}
         for name, tier, editable in tiers:
             lane = self.add_label_lane(name, editable=editable)
@@ -183,6 +207,19 @@ class AudioEditor(QWidget):
             by_name[name] = tier
         if cue_name in by_name:
             self._trial_index = TrialIndex(by_name[cue_name], by_name.get(condition_name))
+
+    # ---- saving ----
+    def configure_save(self, path: Path | str | None) -> None:
+        """Set where :meth:`save` writes the editable tier (Audacity ``.txt``)."""
+        self._save_path = Path(path) if path is not None else None
+
+    def save(self) -> None:
+        """Write the editable (focused) tier to the configured path and emit ``saved``."""
+        if self._save_path is None or self._focus_lane is None:
+            return
+        write_tier(self._focus_lane.get_tier(), self._save_path)
+        self._toolbar.set_status(f"Saved → {self._save_path.name}")
+        self.saved.emit()
 
     def set_theme(self, theme: Theme) -> None:
         self._theme = theme
@@ -233,7 +270,9 @@ class AudioEditor(QWidget):
     def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt override
         key = event.key()
         ctrl = event.modifiers() & Qt.KeyboardModifier.ControlModifier
-        if ctrl and key == Qt.Key.Key_B:
+        if ctrl and key == Qt.Key.Key_S:
+            self.save()
+        elif ctrl and key == Qt.Key.Key_B:
             self._create_label_from_selection()
         elif key == Qt.Key.Key_Tab:
             self._navigate(1)

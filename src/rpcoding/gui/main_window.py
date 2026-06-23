@@ -9,6 +9,7 @@ from rpcoding.core import paths
 from rpcoding.core.config import AppConfig
 from rpcoding.gui.dashboard import Dashboard
 from rpcoding.gui.editor import AudioEditor
+from rpcoding.gui.editor_loader import tiers_for_step
 from rpcoding.gui.theme import DARK_THEME, LIGHT_THEME, Theme, qss
 
 
@@ -28,11 +29,14 @@ class MainWindow(QMainWindow):
         self._stack.addWidget(self._dashboard)
 
         self._editor = AudioEditor(theme)
+        self._editor.saved.connect(self._on_editor_saved)
+        self._editor.back_requested.connect(self._show_dashboard)
         self._stack.addWidget(self._editor)
+        self._editing: tuple | None = None  # (SubjectSession, Step) currently open in the editor
 
         # Esc returns to the dashboard from the editor.
         back = QShortcut(QKeySequence("Escape"), self)
-        back.activated.connect(lambda: self._stack.setCurrentWidget(self._dashboard))
+        back.activated.connect(self._show_dashboard)
 
         self.apply_theme(theme)
 
@@ -48,7 +52,22 @@ class MainWindow(QMainWindow):
         self.apply_theme(LIGHT_THEME if self._theme.name == "dark" else DARK_THEME)
 
     def _open_editor(self, session, step) -> None:  # noqa: ANN001 - Qt signal payloads
+        self._editing = (session, step)
+        specs, save_path = tiers_for_step(session.results_dir, step)
+        self._editor.set_tiers(specs)
+        self._editor.configure_save(save_path)
         wav = session.output_path(paths.ALLBLOCKS_WAV)
         if wav.exists():
             self._editor.load(wav, session.results_dir / ".rpcoding" / "cache")
         self._stack.setCurrentWidget(self._editor)
+        self._editor.setFocus()
+
+    def _on_editor_saved(self) -> None:
+        if self._editing is None:
+            return
+        session, step = self._editing
+        session.record_done(step)
+        self._dashboard.refresh()
+
+    def _show_dashboard(self) -> None:
+        self._stack.setCurrentWidget(self._dashboard)
