@@ -1,0 +1,16 @@
+defaults:
+    - task: lexical_repeat
+    - _self_
+
+patient_dir: "F:\\CouldStorage\\Box\\CoganLab\\ECoG_Task_Data\\response_coding\\response_coding_results\\LexicalDecRepNoDelay"
+patients: D139,D140
+patient_prefixes:
+    - D*
+    - S*
+
+home_dir: "F:\\CouldStorage"
+merge_thresh: 0.5  # seconds
+
+only_stims: False
+
+debug_mode: False

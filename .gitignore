@@ -34,9 +34,8 @@ Thumbs.db
 *.mat
 !tests/fixtures/**/*.mat
 
-# ---- MFA outputs / downloaded models ----
-mfa/
-input_mfa*/
-output_mfa*/
+# MFA output dirs (mfa/, input_mfa*/, output_mfa*/) live in the external subject data tree,
+# not in this repo, so they are not ignored here (a broad `mfa/` would wrongly hide the
+# tracked source package src/rpcoding/core/mfa/).
 
 # ---- Reference material is kept local-only (see references/.gitignore = '*') ----
