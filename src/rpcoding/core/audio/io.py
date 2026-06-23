@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
@@ -30,3 +31,14 @@ def duration_seconds(path: Path | str) -> float:
     """Duration of a WAV in seconds (without loading the samples)."""
     info = sf.info(str(path))
     return info.frames / info.samplerate
+
+
+def stream_blocks(
+    path: Path | str, blocksize: int, *, dtype: str = "float32", overlap: int = 0
+) -> Iterator[np.ndarray]:
+    """Yield mono 1-D blocks of a WAV (peak RAM = one block) — for building large-file caches."""
+    with sf.SoundFile(str(path)) as f:
+        for block in f.blocks(blocksize=blocksize, overlap=overlap, dtype=dtype, always_2d=False):
+            if block.ndim == 2:
+                block = block[:, 0]
+            yield np.ascontiguousarray(block)
