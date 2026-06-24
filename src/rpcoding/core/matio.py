@@ -37,10 +37,14 @@ def load_mat(path: Path | str, *, simplify: bool = True) -> dict[str, Any]:
 
 
 def save_mat(path: Path | str, data: dict[str, Any]) -> None:
-    """Write a dict of variables to a ``.mat`` file (creating parent dirs)."""
+    """Write a dict of variables to a ``.mat`` file (creating parent dirs).
+
+    ``do_compression=True`` matches MATLAB's default ``save`` (v7, zlib-compressed): without it
+    scipy writes uncompressed .mat files that are ~20-40x larger than the MATLAB pipeline's.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    sio.savemat(str(path), data)
+    sio.savemat(str(path), data, do_compression=True)
 
 
 def _as_trial_list(value: Any) -> list[dict]:

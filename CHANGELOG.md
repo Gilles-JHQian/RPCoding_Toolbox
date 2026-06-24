@@ -177,6 +177,10 @@ in development); entries are grouped by the feature branch that delivered them, 
   → a real struct array. Also made `generate_trials` **idempotent** like the MATLAB: a re-run starts
   from the untouched `Trials_org.mat` backup instead of the previous output. (Re-run write-Trials on
   affected subjects to rewrite their `Trials.mat`.)
+- **`.mat` files are now compressed (parity)** (`fix/trials-struct-array`): `save_mat` writes with
+  `do_compression=True` to match MATLAB's default `save` (v7, zlib). scipy's uncompressed default made
+  our `.mat` files ~20-40× larger than the MATLAB pipeline's (e.g. a 504-trial `Trials_org` was 359 KB
+  vs MATLAB's ~18 KB; now ~10 KB). Lossless — `loadmat` decompresses transparently.
 
 ### Fixed (later)
 

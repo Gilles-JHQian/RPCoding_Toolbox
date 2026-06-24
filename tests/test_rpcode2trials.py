@@ -217,3 +217,18 @@ def test_save_trials_writes_struct_array_not_cell(tmp_path):
     # …and it still round-trips through our normalising loader.
     back = load_trials(out)
     assert [t["Cue_Tag"] for t in back] == ["Cue/x/CORRECT", "Cue/y/CORRECT"]
+
+
+def test_save_mat_is_compressed_like_matlab(tmp_path):
+    import numpy as np
+    import scipy.io as sio
+
+    from rpcoding.core.matio import save_mat
+
+    data = {"x": np.tile(np.arange(1000.0), 50)}  # 50k repetitive doubles -> very compressible
+    comp = tmp_path / "c.mat"
+    save_mat(comp, data)
+    uncomp = tmp_path / "u.mat"
+    sio.savemat(str(uncomp), data, do_compression=False)
+    assert comp.stat().st_size < uncomp.stat().st_size / 2  # matches MATLAB's compressed save
+    assert np.array_equal(sio.loadmat(str(comp))["x"].ravel(), data["x"])  # lossless round-trip
