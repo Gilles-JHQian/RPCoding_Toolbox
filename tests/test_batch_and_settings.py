@@ -52,6 +52,14 @@ def test_settings_dialog_has_mfa_panel(qtbot, tmp_path):
     assert dlg._mfa_status_lay.count() >= 4  # one status row per probed item
 
 
+def test_settings_editor_audio_choice_roundtrip(qtbot, tmp_path):
+    dlg = SettingsDialog(AppConfig(droot=tmp_path, editor_use_processed_audio=True))
+    qtbot.addWidget(dlg)
+    assert dlg._use_processed.isChecked()  # reflects the config
+    dlg._use_processed.setChecked(False)
+    assert dlg.result_config().editor_use_processed_audio is False
+
+
 def test_batch_dialog_rows_and_progress(qtbot, tmp_path):
     dlg = BatchDialog(AppConfig(droot=tmp_path), Task.LEXICAL_NODELAY, ["D100", "D101"])
     qtbot.addWidget(dlg)

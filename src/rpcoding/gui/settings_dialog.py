@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -100,6 +101,7 @@ class SettingsDialog(QDialog):
             mfa_form.addRow(task.value, edit)
 
         outer.addWidget(self._build_mfa_group())
+        self._use_processed.setChecked(config.editor_use_processed_audio)
 
         self._buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -134,6 +136,13 @@ class SettingsDialog(QDialog):
         self._mfa_status_line.setObjectName("Secondary")
         self._mfa_status_line.setWordWrap(True)
         gl.addWidget(self._mfa_status_line)
+
+        self._use_processed = QCheckBox("Load the MFA-denoised audio in the editor")
+        self._use_processed.setToolTip(
+            "MFA denoises allblocks.wav and keeps the original as allblocks_original.wav.\n"
+            "Off (default): the editor loads the original; on: it loads the denoised audio."
+        )
+        gl.addWidget(self._use_processed)
         return group
 
     def _render_mfa_status(self):
@@ -197,4 +206,5 @@ class SettingsDialog(QDialog):
             mfa_task_map=task_map,
             word_list=Path(self._word.text()) if self._word.text() else None,
             nonword_list=Path(self._nonword.text()) if self._nonword.text() else None,
+            editor_use_processed_audio=self._use_processed.isChecked(),
         )

@@ -148,6 +148,15 @@ in development); entries are grouped by the feature branch that delivered them, 
   they just open focused on their editable track (first-stims vs response). Split the "focused track"
   (navigation) from the "editable track" (create / paste / save), so saving always writes the editable
   tier regardless of which track is focused.
+- **MFA no longer stales the whole pipeline** (`fix/mfa-stale-and-editor-audio`): MFA denoises
+  `allblocks.wav` **in place** (saving the pre-denoise audio as `allblocks_original.wav`), which made
+  Mark-First-Stimuli and everything downstream go **stale** the moment MFA ran. Staleness now ignores
+  `allblocks.wav` and tracks its sibling `block_wav_onsets.mat` instead (same concat step, untouched by
+  MFA) — so an MFA run no longer stales the chain, but a genuine **re-concat** still does. Old manifests
+  stay compatible (the recorded `allblocks.wav` fingerprint is dropped from the comparison).
+- **Editor audio after MFA is configurable** (`fix/mfa-stale-and-editor-audio`): once MFA has run, the
+  editor loads the **original** (pre-denoise) `allblocks_original.wav` by default; a new Settings → MFA
+  checkbox (`editor_use_processed_audio`) switches it to the MFA-denoised audio.
 
 ### Fixed (later)
 

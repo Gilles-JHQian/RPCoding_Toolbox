@@ -31,6 +31,8 @@ _TASK_ANTI_KEYWORD = {Task.LEXICAL_DELAY: "nodelay"}  # a Delay session must not
 
 # Canonical artifact filenames produced/consumed by the pipeline.
 ALLBLOCKS_WAV = "allblocks.wav"
+# MFA denoises allblocks.wav in place and preserves the pre-denoise audio under this name.
+ALLBLOCKS_ORIGINAL_WAV = "allblocks_original.wav"
 BLOCK_WAV_ONSETS_MAT = "block_wav_onsets.mat"
 TRIALINFO_MAT = "trialInfo.mat"
 FIRST_STIMS_TXT = "first_stims.txt"

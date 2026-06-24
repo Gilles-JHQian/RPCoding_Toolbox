@@ -36,6 +36,11 @@ one-time), and installs the lab's custom dictionaries; **Re-check** re-probes. T
 equivalent of `python -m rpcoding.core.mfa.models --ensure-models`. MFA must be complete (all ✓)
 before the **MFA forced alignment** step will run.
 
+MFA denoises `allblocks.wav` in place and keeps the pre-denoise audio as `allblocks_original.wav`.
+By default the editor loads that **original** audio after MFA; tick **"Load the MFA-denoised audio in
+the editor"** to use the processed audio instead. (Either way, running MFA no longer marks the
+earlier steps *stale* — only a genuine re-concatenate does.)
+
 ## 3. Dashboard
 
 1. Pick a **Task** (top-left). The **◑** button toggles the light/dark theme.

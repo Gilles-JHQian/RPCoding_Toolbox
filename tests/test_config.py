@@ -28,3 +28,11 @@ def test_override_and_roundtrip(tmp_path):
     # explicit override preserved, defaults still present
     assert loaded.mfa_task("Uniqueness_Point") == "uniqueness_point"
     assert loaded.mfa_task(Task.LEXICAL_DELAY) == "lexical_repeat"
+
+
+def test_editor_use_processed_audio_roundtrip(tmp_path):
+    assert AppConfig(droot=tmp_path).editor_use_processed_audio is False  # default: original audio
+    cfg = AppConfig(droot=tmp_path, editor_use_processed_audio=True)
+    p = tmp_path / "cfg.json"
+    cfg.save(p)
+    assert AppConfig.load(p).editor_use_processed_audio is True
