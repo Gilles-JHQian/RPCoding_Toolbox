@@ -75,6 +75,40 @@ def test_run_in_thread(qtbot):
     qtbot.waitUntil(lambda: results == [7], timeout=3000)
 
 
+def test_run_in_thread_callbacks_run_on_main_thread(qtbot):
+    # Regression: callbacks must fire on the GUI thread so they can touch widgets. A bare-closure
+    # callback would otherwise run on the worker thread (direct connection) and a widget access
+    # there hard-crashes Qt — this was the "app quits right after the last step finished" bug.
+    import threading
+
+    parent = QObject()
+    main_tid = threading.get_ident()
+    seen: dict[str, int] = {}
+    run_in_thread(
+        parent,
+        lambda: 1,
+        on_result=lambda _v: seen.__setitem__("result", threading.get_ident()),
+        on_finished=lambda: seen.__setitem__("finished", threading.get_ident()),
+    )
+    qtbot.waitUntil(lambda: "finished" in seen, timeout=3000)
+    assert seen["result"] == main_tid
+    assert seen["finished"] == main_tid
+
+
+def test_run_in_thread_error_callback_on_main_thread(qtbot):
+    import threading
+
+    def boom():
+        raise RuntimeError("x")
+
+    parent = QObject()
+    main_tid = threading.get_ident()
+    seen: dict[str, int] = {}
+    run_in_thread(parent, boom, on_error=lambda _m: seen.__setitem__("tid", threading.get_ident()))
+    qtbot.waitUntil(lambda: "tid" in seen, timeout=3000)
+    assert seen["tid"] == main_tid
+
+
 def test_subject_list(qtbot):
     sl = SubjectList()
     qtbot.addWidget(sl)

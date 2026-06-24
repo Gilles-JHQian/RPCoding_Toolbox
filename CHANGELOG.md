@@ -184,6 +184,16 @@ in development); entries are grouped by the feature branch that delivered them, 
 
 ### Fixed (later)
 
+- **App hard-crashed right after a step finished** (`fix/worker-callback-thread`): `run_in_thread`
+  connected the `on_result`/`on_error`/`on_finished` callbacks to the worker's signals as bare
+  closures. A signal connected to a plain callable (not a bound method of a main-thread `QObject`)
+  gets a *direct* connection, so those callbacks ran on the **worker** thread — and the dashboard's
+  post-step callback touches widgets (`_refresh_states`, `set_summary`), which is undefined
+  behaviour off the GUI thread: a C++ abort the Python excepthook can't catch. Most visible on the
+  final write-Trials step (its callback does the most UI work). Fixed by relaying every callback
+  through a `_Dispatcher` `QObject` that lives in the parent's (GUI) thread, so the cross-thread
+  delivery is queued onto that thread and the callbacks run there. (Other call sites already worked
+  around this by only emitting signals from their callbacks; they're unaffected.)
 - **Spectrogram worker crash:** `scipy.signal` was imported lazily inside the spectrogram builder,
   which runs on a worker thread — a first scipy import off the main thread is an access violation.
   It's now imported at module load (main thread).
