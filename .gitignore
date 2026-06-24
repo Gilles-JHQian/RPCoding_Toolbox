@@ -37,5 +37,7 @@ Thumbs.db
 # MFA output dirs (mfa/, input_mfa*/, output_mfa*/) live in the external subject data tree,
 # not in this repo, so they are not ignored here (a broad `mfa/` would wrongly hide the
 # tracked source package src/rpcoding/core/mfa/).
+# Hydra writes a run dir under the vendored pipeline's cwd when MFA runs — regenerated, never commit.
+src/rpcoding/core/mfa/pipeline/outputs/
 
 # ---- Reference material is kept local-only (see references/.gitignore = '*') ----
