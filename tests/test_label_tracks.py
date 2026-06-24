@@ -163,6 +163,49 @@ def test_tab_key_navigates_labels(qtbot):
     assert ed.selection() == (5.0, 6.0)
 
 
+def _multi_tier_editor(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    cue = Tier("cue_events", [Interval(1, 2, "c1"), Interval(5, 6, "c2")])
+    ed.set_tiers(
+        [
+            ("cue_events", cue, False),
+            ("response", Tier("response", [Interval(3, 4, "r1")]), True),
+        ]
+    )
+    return ed
+
+
+def test_tab_navigates_the_focused_track_not_only_editable(qtbot):
+    ed = _multi_tier_editor(qtbot)
+    assert ed._focus_lane.name == "response"  # opens focused on the editable track
+    ed._focus_lane = ed._label_lanes[0]  # select the read-only cue track (what a click does)
+    ed._navigate(1)
+    assert ed._active_lane.name == "cue_events"  # Tab stays on the cue track …
+    assert ed.selection() == (1.0, 2.0)  # … stepping through its labels
+    ed._navigate(1)
+    assert ed.selection() == (5.0, 6.0)
+
+
+def test_up_down_moves_the_focused_track(qtbot):
+    ed = _multi_tier_editor(qtbot)
+    assert ed._focus_lane.name == "response"
+    ed._move_focus(-1)
+    assert ed._focus_lane.name == "cue_events"
+    ed._move_focus(1)
+    assert ed._focus_lane.name == "response"
+
+
+def test_save_targets_editable_tier_regardless_of_focus(qtbot, tmp_path):
+    ed = _multi_tier_editor(qtbot)
+    ed._focus_lane = ed._label_lanes[0]  # focus the read-only cue track
+    out = tmp_path / "resp.txt"
+    ed.configure_save(out)
+    ed.save()
+    text = out.read_text()
+    assert "r1" in text and "c1" not in text  # wrote the editable response tier, not cue
+
+
 def test_selection_move_vs_new(qtbot):
     ed = AudioEditor(DARK_THEME)
     qtbot.addWidget(ed)

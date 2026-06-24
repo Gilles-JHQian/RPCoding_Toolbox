@@ -86,7 +86,8 @@ class AudioEditor(QWidget):
         self._jobs: list = []
         self._label_lanes: list[LabelLane] = []
         self._lane_plots: list[pg.PlotItem] = []
-        self._focus_lane: LabelLane | None = None
+        self._focus_lane: LabelLane | None = None  # track Tab/Up/Down navigate; follows selection
+        self._editable_lane: LabelLane | None = None  # the one editable tier (create/paste/save)
         self._active_lane: LabelLane | None = None  # lane whose label is currently selected
         self._amp_scale = 1.0
         self._trial_index: TrialIndex | None = None
@@ -389,8 +390,9 @@ class AudioEditor(QWidget):
         self._lane_plots.append(plot)
         self._add_mirror_region(plot)
         self._add_cursor_line(plot)
-        if editable and self._focus_lane is None:
-            self._focus_lane = lane
+        if editable and self._editable_lane is None:
+            self._editable_lane = lane
+            self._focus_lane = lane  # open with Tab focused on the editable track
         self._sync_header_focus()
         return lane
 
@@ -403,6 +405,7 @@ class AudioEditor(QWidget):
         self._label_lanes = []
         self._lane_plots = []
         self._focus_lane = None
+        self._editable_lane = None
         self._active_lane = None
         self._trial_index = None
         del self._sel_regions[1:]  # keep only the spectrogram mirror (added in __init__)
@@ -438,10 +441,10 @@ class AudioEditor(QWidget):
         self._save_path = Path(path) if path is not None else None
 
     def save(self) -> None:
-        """Write the editable (focused) tier to the configured path and emit ``saved``."""
-        if self._save_path is None or self._focus_lane is None:
+        """Write the editable tier to the configured path and emit ``saved``."""
+        if self._save_path is None or self._editable_lane is None:
             return
-        write_tier(self._focus_lane.get_tier(), self._save_path)
+        write_tier(self._editable_lane.get_tier(), self._save_path)
         self._toolbar.set_status(f"Saved → {self._save_path.name}")
         self.saved.emit()
 
@@ -540,6 +543,10 @@ class AudioEditor(QWidget):
             self._undo()
         elif (ctrl and key == Qt.Key.Key_Y) or (ctrl and shift and key == Qt.Key.Key_Z):
             self._redo()
+        elif key == Qt.Key.Key_Up:
+            self._move_focus(-1)
+        elif key == Qt.Key.Key_Down:
+            self._move_focus(1)
         elif key == Qt.Key.Key_Space:
             self._toggle_play()
         elif key == Qt.Key.Key_Escape:
@@ -553,18 +560,29 @@ class AudioEditor(QWidget):
 
     def _create_label_from_selection(self) -> None:
         span = self._sel.span()
-        if span is None or self._focus_lane is None:
+        if span is None or self._editable_lane is None:
             return
-        self._select_only(self._focus_lane)
-        self._focus_lane.create(span[0], span[1])
+        self._focus_lane = self._editable_lane  # new labels land on the editable track
+        self._select_only(self._editable_lane)
+        self._editable_lane.create(span[0], span[1])
 
     def _navigate(self, step: int) -> None:
+        """Tab / Shift+Tab: step through labels on the *focused* track (whatever you selected)."""
         if self._focus_lane is None:
             return
         self._select_only(self._focus_lane)
         iv = self._focus_lane.select_step(step)
         if iv is not None:
             self._center_on(iv.start, iv.end)
+
+    def _move_focus(self, step: int) -> None:
+        """Up / Down: move the focused track (so Tab then steps through that track's labels)."""
+        if not self._label_lanes:
+            return
+        cur = self._focus_lane if self._focus_lane in self._label_lanes else self._label_lanes[0]
+        idx = self._label_lanes.index(cur)
+        self._focus_lane = self._label_lanes[max(0, min(len(self._label_lanes) - 1, idx + step))]
+        self._select_only(None)  # focus a track without selecting one of its labels yet
 
     # ---- label selection / editing ----
     def _select_only(self, lane: LabelLane | None) -> None:
@@ -588,6 +606,7 @@ class AudioEditor(QWidget):
         for lane in self._label_lanes:
             vb = lane.plot.getViewBox()
             if vb.sceneBoundingRect().contains(pos):
+                self._focus_lane = lane  # Tab now steps through this track
                 self._select_only(lane)
                 lane.select_at(vb.mapSceneToView(pos).x())  # emits label_selected -> highlight
                 return
@@ -647,15 +666,16 @@ class AudioEditor(QWidget):
 
     def _paste(self) -> None:
         """Paste the clipboard label into the editable tier at the cursor / selection / origin."""
-        if self._clipboard is None or self._focus_lane is None:
+        if self._clipboard is None or self._editable_lane is None:
             return
         span = self._sel.span()
         start = self._cursor if self._cursor is not None else (span[0] if span else None)
         if start is None:
             start = self._clipboard.start
         dur = self._clipboard.end - self._clipboard.start
-        self._select_only(self._focus_lane)
-        self._focus_lane.create(start, start + dur, self._clipboard.label)
+        self._focus_lane = self._editable_lane
+        self._select_only(self._editable_lane)
+        self._editable_lane.create(start, start + dur, self._clipboard.label)
 
     # ---- undo / redo (state-history of the editable tier) ----
     def _snapshot(self) -> list[Interval]:
