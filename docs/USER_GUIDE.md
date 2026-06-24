@@ -98,8 +98,10 @@ exists, dragging **inside** it moves the whole selection, dragging an **edge** r
 dragging **outside** starts a new one (Audacity-style).
 
 **Selecting & editing labels:** click a label to select it; then drag its body or either endpoint to
-adjust (the highlight follows live), press **Enter** to rename, or click an **error-palette** button
-(right panel) to append that code. With a label selected the toolbar readout switches to **"label"**
+adjust (the highlight follows live), **double-click it (or press Enter) to edit its name in place**
+(commit with Enter or by clicking away, cancel with Esc), or click a **quick-tag** in the right panel
+to **set** the label to that code. The quick-tag palette is **task-specific** (from the lab Wiki — e.g.
+the Lexical error table); hover a tag for its meaning. With a label selected the toolbar readout switches to **"label"**
 and shows its start / end / length — **typing a new start or end retimes the label itself** (a precise
 alternative to dragging). **Ctrl+C / Ctrl+X / Ctrl+V** copy / cut / paste a label (paste lands at the
 cursor, keeping its length), and **Ctrl+Z / Ctrl+Y** undo / redo. The selected label's span is
@@ -134,7 +136,7 @@ with **…** inside the chip; **hover the label** to see its full text.
 | Up / Down | Move the focused track up / down |
 | Drag selection edge / body | Resize / move the selection |
 | Ctrl + B | Create a label from the selection (on the editable track) |
-| Enter | Rename the selected label |
+| Double-click / Enter | Edit the selected label's name in place |
 | Ctrl + C / X / V | Copy / cut / paste the selected label |
 | Ctrl + Z / Y | Undo / redo label edits |
 | Tab / Shift+Tab | Next / previous label on the **focused** track |

@@ -157,6 +157,12 @@ in development); entries are grouped by the feature branch that delivered them, 
 - **Editor audio after MFA is configurable** (`fix/mfa-stale-and-editor-audio`): once MFA has run, the
   editor loads the **original** (pre-denoise) `allblocks_original.wav` by default; a new Settings → MFA
   checkbox (`editor_use_processed_audio`) switches it to the MFA-denoised audio.
+- **Response-coding quick tags + inline rename** (`feat/rpcode-tags-inline-rename`): the editor's
+  quick-tag palette is now **per task**, taken from the lab Wiki's error tables (`response_tags()` in
+  `core/rpcode/errors.py`; Lexical Delay/No-Delay share the pp.9-10 set, each tag carrying its Wiki
+  description as a tooltip). Clicking a quick tag now **replaces** the label name (it no longer appends
+  `/CODE`). **Double-click a label** (or press **Enter**) to **edit its name in place** — an inline field
+  over the chip that commits on Enter/blur and cancels on Esc (replacing the old rename dialog).
 
 ### Fixed (later)
 

@@ -95,8 +95,8 @@ def test_editor_label_select_highlights_and_renames(qtbot):
     assert ed._active_lane is resp
     assert ed.selection() == (2.0, 4.0)  # its span is highlighted across lanes
 
-    ed._on_error_code("ERR_RESP_YN_NY")  # error palette appends the code
-    assert resp.active_interval().label == "1_no/ERR_RESP_YN_NY"
+    ed._on_error_code("ERR_RESP_YN_NY")  # clicking a quick-tag replaces the label name
+    assert resp.active_interval().label == "ERR_RESP_YN_NY"
 
 
 def test_label_lane_readonly_not_movable(qtbot):
@@ -116,6 +116,43 @@ def test_trial_info_panel(qtbot):
     assert panel._values["Stim"].text() == "casef.wav"
     panel.findChildren(QPushButton)[0].click()
     assert picked and picked[0] == "ERR_TASK_YN_REP"
+
+
+def test_set_response_tags_updates_palette(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_response_tags([("FOO", "foo desc"), ("BAR", "bar desc")])
+    labels = [b.text() for b in ed._trial_panel.findChildren(QPushButton)]
+    assert labels == ["FOO", "BAR"]
+
+
+def test_inline_rename_commits(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", [Interval(2, 4, "1_no")]), True)])
+    resp = ed._label_lanes[0]
+    ed._select_only(resp)
+    resp.select(0)
+    ed._start_inline_rename(resp)  # what a double-click / Enter triggers
+    assert ed._rename_edit is not None and ed._rename_edit.text() == "1_no"
+    ed._rename_edit.setText("1_no_ERR_RESP_REP_WRO_galef")
+    ed._rename_edit._commit()  # Enter
+    assert resp.active_interval().label == "1_no_ERR_RESP_REP_WRO_galef"
+    assert ed._rename_edit is None  # torn down after commit
+
+
+def test_inline_rename_cancel_keeps_label(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", [Interval(2, 4, "1_no")]), True)])
+    resp = ed._label_lanes[0]
+    ed._select_only(resp)
+    resp.select(0)
+    ed._start_inline_rename(resp)
+    ed._rename_edit.setText("changed")
+    ed._rename_edit.cancelled.emit()  # Escape
+    assert resp.active_interval().label == "1_no"  # unchanged
+    assert ed._rename_edit is None
 
 
 def test_editor_set_tiers_and_selection(qtbot):

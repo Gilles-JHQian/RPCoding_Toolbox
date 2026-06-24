@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow
 
 from rpcoding.core import paths
 from rpcoding.core.config import AppConfig
+from rpcoding.core.rpcode.errors import response_tags
 from rpcoding.gui.dashboard import Dashboard
 from rpcoding.gui.editor import AudioEditor
 from rpcoding.gui.editor_loader import tiers_for_step
@@ -55,6 +56,7 @@ class MainWindow(QMainWindow):
         title = f"{session.subject} · {step.value} — Annotation Editor"
         self._editor.setWindowTitle(title)
         self._editor.set_tiers(specs)
+        self._editor.set_response_tags(response_tags(session.task))  # per-task quick-tag palette
         self._editor.configure_save(save_path)
         # After MFA has denoised allblocks.wav in place, prefer the preserved original unless the
         # user opted into the processed audio (Settings → MFA).

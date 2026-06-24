@@ -12,19 +12,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from rpcoding.core.rpcode.errors import response_tags
+from rpcoding.core.tasks import Task
 from rpcoding.core.trial_index import TrialInfo
 
-# Authoritative error taxonomy from the lab wiki.
-ERROR_CODES = [
-    "ERR_TASK_YN_REP",
-    "ERR_TASK_REP_YN",
-    "ERR_RESP_YN_YN",
-    "ERR_RESP_YN_NY",
-    "ERR_RESP_REP_WRO",
-    "ERR_RESP_REP_MIS",
-    "NOISY",
-    "LATR_RESP",
-]
 _FIELDS = ["Trial", "Block", "Task", "Stim", "Word/Nonword", "Response", "Error"]
 _CONVENTIONS = (
     'Conventions (hints): Just-Listen → no label · Repeat → number · Yes/No → "yes"/"no" · '
@@ -72,24 +63,35 @@ class TrialInfoPanel(QFrame):
         pv = QVBoxLayout(pal_host)
         pv.setContentsMargins(16, 12, 16, 12)
         pv.setSpacing(10)
-        cap = QLabel("ERROR PALETTE · INSERT INTO SELECTED")
+        cap = QLabel("ERROR TAGS · CLICK TO SET LABEL")
         cap.setObjectName("Caption")
         pv.addWidget(cap)
-        palette = QGridLayout()
-        palette.setSpacing(6)
-        for i, code in enumerate(ERROR_CODES):
-            btn = QPushButton(code)
-            btn.setObjectName("Chip")
-            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)  # mouse-only; keep Tab on the editor
-            btn.clicked.connect(lambda _checked=False, c=code: self.error_code_picked.emit(c))
-            palette.addWidget(btn, i // 2, i % 2)
-        pv.addLayout(palette)
+        self._palette = QGridLayout()
+        self._palette.setSpacing(6)
+        pv.addLayout(self._palette)
         hint = QLabel(_CONVENTIONS)
         hint.setObjectName("Hint")
         hint.setWordWrap(True)
         pv.addWidget(hint)
         lay.addWidget(pal_host)
         lay.addStretch(1)
+        self.set_tags(response_tags(Task.LEXICAL_DELAY))  # default until the task is known
+
+    def set_tags(self, tags: list[tuple[str, str]]) -> None:
+        """Rebuild the quick-tag palette from ``(code, description)`` pairs (per task)."""
+        while self._palette.count():
+            item = self._palette.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(None)  # detach now so it isn't found before deleteLater runs
+                w.deleteLater()
+        for i, (code, desc) in enumerate(tags):
+            btn = QPushButton(code)
+            btn.setObjectName("Chip")
+            btn.setToolTip(desc)
+            btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)  # mouse-only; keep Tab on the editor
+            btn.clicked.connect(lambda _checked=False, c=code: self.error_code_picked.emit(c))
+            self._palette.addWidget(btn, i // 2, i % 2)
 
     def _hline(self) -> QFrame:
         line = QFrame()
