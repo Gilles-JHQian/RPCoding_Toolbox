@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 from PySide6.QtCore import QObject, Signal
 
 
@@ -25,6 +26,11 @@ class AudioPlayer(QObject):
         self._start_frame = 0
         self._frames_done = 0
         self._remaining = 0
+        self._volume = 1.0
+
+    def set_volume(self, volume: float) -> None:
+        """Output gain applied to the samples during playback (1.0 = unchanged)."""
+        self._volume = max(float(volume), 0.0)
 
     def is_playing(self) -> bool:
         return self._stream is not None
@@ -72,7 +78,7 @@ class AudioPlayer(QObject):
             n = min(frames, self._remaining)
             data = f.read(n, dtype="float32", always_2d=True)
             got = len(data)
-            outdata[:got, 0] = data[:, 0]
+            outdata[:got, 0] = np.clip(data[:, 0] * self._volume, -1.0, 1.0)
             if got < frames:
                 outdata[got:, 0] = 0.0
             self._remaining -= got

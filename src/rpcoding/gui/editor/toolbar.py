@@ -23,6 +23,7 @@ class EditorToolbar(QFrame):
     zoom_out_requested = Signal()
     fit_requested = Signal()
     play_requested = Signal()
+    volume_changed = Signal(float)  # playback output gain
     selection_edited = Signal(float, float)  # start, end (seconds) typed into the readout
 
     def __init__(self, parent=None):
@@ -53,11 +54,20 @@ class EditorToolbar(QFrame):
 
         lay.addWidget(QLabel("Amp"))
         self._amp = QSlider(Qt.Orientation.Horizontal)
-        self._amp.setRange(10, 1000)  # 0.1x .. 10x
+        self._amp.setRange(10, 1000)  # 0.1x .. 10x (waveform display height)
         self._amp.setValue(100)
-        self._amp.setFixedWidth(120)
+        self._amp.setFixedWidth(110)
         self._amp.valueChanged.connect(lambda v: self.amplitude_changed.emit(v / 100.0))
         lay.addWidget(self._amp)
+
+        lay.addWidget(QLabel("Vol"))
+        self._vol = QSlider(Qt.Orientation.Horizontal)
+        self._vol.setRange(0, 200)  # 0% .. 200% playback gain
+        self._vol.setValue(100)
+        self._vol.setFixedWidth(96)
+        self._vol.setToolTip("Playback volume")
+        self._vol.valueChanged.connect(lambda v: self.volume_changed.emit(v / 100.0))
+        lay.addWidget(self._vol)
 
         # Editable selection readout: click a field to type a precise start / end (seconds).
         lay.addWidget(QLabel("sel"))
@@ -93,6 +103,7 @@ class EditorToolbar(QFrame):
         for w in self.findChildren(QPushButton):
             w.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._amp.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._vol.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
     def _make_time_field(self, placeholder: str) -> QLineEdit:
         field = QLineEdit()
