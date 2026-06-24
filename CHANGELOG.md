@@ -201,6 +201,14 @@ in development); entries are grouped by the feature branch that delivered them, 
 
 ### Fixed (later)
 
+- **Undo corrupted a focused read-only lane** (`fix/editor-undo-and-tab-scroll`): undo/redo
+  snapshotted and restored `_focus_lane` (whatever track Tab was on) instead of the one editable
+  tier. Focusing a read-only track (e.g. cue) and pressing Ctrl+Z overwrote it with the editable
+  tier's snapshot. Undo now always targets `_editable_lane` — the only tier that can change.
+- **Tab navigation now overrides the playback auto-follow** (`fix/editor-undo-and-tab-scroll`):
+  Tabbing to a label while playing scrolled the view to that label, but the next playhead tick
+  immediately yanked it back. A Tab scroll now suspends the auto-follow until the playhead drifts
+  back into the visible window (or playback is restarted).
 - **App hard-crashed right after a step finished** (`fix/worker-callback-thread`): `run_in_thread`
   connected the `on_result`/`on_error`/`on_finished` callbacks to the worker's signals as bare
   closures. A signal connected to a plain callable (not a bound method of a main-thread `QObject`)
