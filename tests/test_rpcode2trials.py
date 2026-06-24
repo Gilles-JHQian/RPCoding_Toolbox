@@ -9,10 +9,30 @@ import pytest
 from rpcoding.core.labels import Interval, read_tier
 from rpcoding.core.matio import load_trials
 from rpcoding.core.paths import find_trials_mat
+from rpcoding.core.rpcode.errors import response_tags
 from rpcoding.core.rpcode.rpcode2trials import _delay_resp_err, rpcode_to_trials
 from rpcoding.core.tasks import Task
 from rpcoding.core.trialinfo.build import discover_trialdata_files, select_and_combine
 from rpcoding.core.wordlists import NONWORD, WORD, load_name_list
+
+
+def test_response_tags_per_task():
+    # Lexical Delay palette = the Wiki's pp.9-10 error table (input codes, underscore-separated).
+    codes = [c for c, _desc in response_tags(Task.LEXICAL_DELAY)]
+    assert codes == [
+        "ERR_TASK_YN_REP",
+        "ERR_TASK_REP_YN",
+        "ERR_RESP_YN_YN",
+        "ERR_RESP_YN_NY",
+        "ERR_RESP_REP_WRO",
+        "ERR_RESP_REP_MIS",
+        "NOISY",
+        "LATR_RESP",
+    ]
+    # No-Delay reuses the same set; every tag carries a tooltip description.
+    assert response_tags(Task.LEXICAL_NODELAY) == response_tags(Task.LEXICAL_DELAY)
+    assert all(desc for _c, desc in response_tags(Task.LEXICAL_DELAY))
+
 
 # ---- synthetic NoDelay scenarios ----
 

@@ -9,9 +9,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pyqtgraph as pg
-from PySide6.QtCore import QEvent, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QInputDialog, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLineEdit, QVBoxLayout, QWidget
 
 from rpcoding.core.audio.io import duration_seconds
 from rpcoding.core.audio.render.cache import AudioRenderCache
@@ -62,6 +62,34 @@ class TimeAxisItem(pg.AxisItem):
         return out
 
 
+class _InlineEdit(QLineEdit):
+    """In-place label rename field (double-click / Enter): commits on Enter/blur, cancels on Esc."""
+
+    committed = Signal(str)
+    cancelled = Signal()
+
+    def __init__(self, text: str, parent=None):
+        super().__init__(text, parent)
+        self._done = False
+        self.returnPressed.connect(self._commit)
+
+    def _commit(self) -> None:
+        if not self._done:
+            self._done = True
+            self.committed.emit(self.text())
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802 - Qt override
+        if event.key() == Qt.Key.Key_Escape:
+            self._done = True
+            self.cancelled.emit()
+            return
+        super().keyPressEvent(event)
+
+    def focusOutEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().focusOutEvent(event)
+        self._commit()  # clicking away commits (Audacity-style)
+
+
 class AudioEditor(QWidget):
     range_changed = Signal(float, float)
     selection_changed = Signal(object)
@@ -89,6 +117,7 @@ class AudioEditor(QWidget):
         self._focus_lane: LabelLane | None = None  # track Tab/Up/Down navigate; follows selection
         self._editable_lane: LabelLane | None = None  # the one editable tier (create/paste/save)
         self._active_lane: LabelLane | None = None  # lane whose label is currently selected
+        self._rename_edit: _InlineEdit | None = None  # active inline-rename field, if any
         self._amp_scale = 1.0
         self._trial_index: TrialIndex | None = None
         self._save_path: Path | None = None
@@ -398,6 +427,7 @@ class AudioEditor(QWidget):
 
     def clear_tiers(self) -> None:
         """Remove all label lanes and reset selection/trial state (for reopening on a new step)."""
+        self._end_inline_rename()
         self.set_selection(None)
         for plot in self._lane_plots:
             self._glw.removeItem(plot)
@@ -608,7 +638,9 @@ class AudioEditor(QWidget):
             if vb.sceneBoundingRect().contains(pos):
                 self._focus_lane = lane  # Tab now steps through this track
                 self._select_only(lane)
-                lane.select_at(vb.mapSceneToView(pos).x())  # emits label_selected -> highlight
+                iv = lane.select_at(vb.mapSceneToView(pos).x())  # emits label_selected -> highlight
+                if ev.double() and lane.editable and iv is not None:
+                    self._start_inline_rename(lane)  # double-click -> edit in place
                 return
         # clicked an audio lane (waveform/spectrogram/ruler): drop a cursor, clear any selection
         self._select_only(None)
@@ -629,23 +661,54 @@ class AudioEditor(QWidget):
         self.set_selection((iv.start, iv.end) if iv is not None else None)
 
     def _rename_active(self) -> None:
-        lane = self._active_lane
-        if lane is None or not lane.editable or lane.active_interval() is None:
-            return
-        text, ok = QInputDialog.getText(
-            self, "Rename label", "Label:", text=lane.active_interval().label
-        )
-        if ok:
-            lane.rename_active(text)
+        self._start_inline_rename(self._active_lane)
 
-    def _on_error_code(self, code: str) -> None:
-        lane = self._active_lane
+    def _start_inline_rename(self, lane: LabelLane | None) -> None:
+        """Open an in-place editor over the active label of ``lane`` (double-click / Enter)."""
         if lane is None or not lane.editable:
             return
         iv = lane.active_interval()
         if iv is None:
             return
-        lane.rename_active(f"{iv.label}/{code}" if iv.label else code)  # append the code
+        self._end_inline_rename()
+        vb = lane.plot.getViewBox()
+        p1 = self._glw.mapFromScene(vb.mapViewToScene(QPointF(iv.start, 1.0)))
+        p2 = self._glw.mapFromScene(vb.mapViewToScene(QPointF(iv.end, 0.0)))
+        x, y = min(p1.x(), p2.x()), min(p1.y(), p2.y())
+        w, h = abs(p2.x() - p1.x()), abs(p2.y() - p1.y())
+        edit = _InlineEdit(iv.label, self._glw)
+        edit.setStyleSheet(
+            f"background: {self._theme.color('app-bg')}; color: {self._theme.color('text-pri')};"
+            f" border: 1px solid {self._theme.color('accent')};"
+            " border-radius: 3px; padding: 1px 4px;"
+        )
+        edit.setGeometry(int(x), int(y), max(int(w), 90), max(int(h), 22))
+        edit.committed.connect(lambda text, ln=lane: self._finish_inline_rename(ln, text))
+        edit.cancelled.connect(self._end_inline_rename)
+        edit.show()
+        edit.raise_()
+        edit.setFocus()
+        edit.selectAll()
+        self._rename_edit = edit
+
+    def _finish_inline_rename(self, lane: LabelLane, text: str) -> None:
+        self._end_inline_rename()
+        lane.rename_active(text)
+
+    def _end_inline_rename(self) -> None:
+        if self._rename_edit is not None:
+            self._rename_edit.deleteLater()
+            self._rename_edit = None
+
+    def _on_error_code(self, code: str) -> None:
+        lane = self._active_lane
+        if lane is None or not lane.editable or lane.active_interval() is None:
+            return
+        lane.rename_active(code)  # replace the label with the tag (then double-click to edit it)
+
+    def set_response_tags(self, tags: list[tuple[str, str]]) -> None:
+        """Set the Trial-Info quick-tag palette for the current task (see core.rpcode.errors)."""
+        self._trial_panel.set_tags(tags)
 
     def _delete_active(self) -> None:
         lane = self._active_lane
@@ -804,6 +867,7 @@ class AudioEditor(QWidget):
         self._reslice_all(t0, t1, max(int(self._owner_vb.width()), 1))
 
     def _reslice_all(self, t0: float, t1: float, px: int) -> None:
+        self._end_inline_rename()  # a pan/zoom would leave the inline editor floating off its chip
         self.waveform.set_view(t0, t1, px)
         self.spectrogram.set_view(t0, t1, px)
         for lane in self._label_lanes:
