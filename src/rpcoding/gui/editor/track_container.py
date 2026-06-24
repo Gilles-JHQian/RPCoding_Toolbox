@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pyqtgraph as pg
-from PySide6.QtCore import QEvent, Qt, Signal
+from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QVBoxLayout, QWidget
 
@@ -20,6 +20,7 @@ from rpcoding.core.trial_index import TrialIndex
 from rpcoding.gui.editor.debounce import RangeDebouncer
 from rpcoding.gui.editor.interactive_viewbox import InteractiveViewBox
 from rpcoding.gui.editor.label_lane import LABEL_LANE_HEIGHT, LabelLane
+from rpcoding.gui.editor.playback import AudioPlayer
 from rpcoding.gui.editor.render_jobs import build_pyramid_job, build_spectrogram_job
 from rpcoding.gui.editor.selection import SelectionModel
 from rpcoding.gui.editor.spectrogram_lane import SpectrogramLane
@@ -93,6 +94,7 @@ class AudioEditor(QWidget):
         self._undo_idx = 0
         self._restoring = False
         self._cursor: float | None = None
+        self._wav_path: Path | None = None
         self._row = 0
         self._sel_updating = False
         self._sel_regions: list[pg.LinearRegionItem] = []
@@ -107,6 +109,7 @@ class AudioEditor(QWidget):
         self._toolbar.zoom_out_requested.connect(lambda: self.zoom(1.7))
         self._toolbar.fit_requested.connect(self.fit)
         self._toolbar.selection_edited.connect(self._on_selection_edited)
+        self._toolbar.play_requested.connect(self._toggle_play)
         outer.addWidget(self._toolbar)
 
         body = QHBoxLayout()
@@ -166,6 +169,17 @@ class AudioEditor(QWidget):
         self._pyramid_ready.connect(self._on_pyramid)
         self._spectro_ready.connect(self._on_spectro)
 
+        # playback: a player + a moving playhead on the audio lanes, polled by a UI-thread timer.
+        self._player = AudioPlayer(self)
+        self._player.finished.connect(self._on_playback_finished)
+        self._playhead_lines = [
+            self._make_playhead_line(self._wave_plot),
+            self._make_playhead_line(self._spec_plot),
+        ]
+        self._play_timer = QTimer(self)
+        self._play_timer.setInterval(30)
+        self._play_timer.timeout.connect(self._update_playhead)
+
     # ---- layout ----
     def _add_row(
         self, name: str, height: int, axis: dict | None = None, viewbox=None
@@ -217,6 +231,13 @@ class AudioEditor(QWidget):
 
     def _add_cursor_line(self, plot: pg.PlotItem) -> None:
         self._cursor_lines.append(self._make_cursor_line(plot))
+
+    def _make_playhead_line(self, plot: pg.PlotItem) -> pg.InfiniteLine:
+        line = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen("#46c7d6", width=2))
+        line.setZValue(7)
+        line.hide()
+        plot.addItem(line)
+        return line
 
     def set_cursor(self, x: float | None) -> None:
         """Show a vertical cursor at time ``x`` across all lanes (None hides it)."""
@@ -291,6 +312,42 @@ class AudioEditor(QWidget):
     def _on_selection_edited(self, a: float, b: float) -> None:
         self.set_selection((a, b))
         self.setFocus()  # return keyboard focus to the editor after typing in a readout field
+
+    # ---- playback ----
+    def _play_range(self) -> tuple[float, float | None]:
+        """The window Space/Play uses: the selection, else cursor-to-end, else the whole file."""
+        span = self._sel.span()
+        if span is not None:
+            return span[0], span[1]
+        if self._cursor is not None:
+            return self._cursor, None  # from the cursor to the end
+        return 0.0, None  # the whole file
+
+    def _toggle_play(self) -> None:
+        if self._player.is_playing():
+            self._player.stop()  # -> finished -> _on_playback_finished resets the UI
+            return
+        if self._wav_path is None or not self._wav_path.exists():
+            return
+        start, end = self._play_range()
+        self._player.play(self._wav_path, start, end)
+        if self._player.is_playing():
+            self._toolbar.set_playing(True)
+            for line in self._playhead_lines:
+                line.setPos(start)
+                line.show()
+            self._play_timer.start()
+
+    def _update_playhead(self) -> None:
+        pos = self._player.position()
+        for line in self._playhead_lines:
+            line.setPos(pos)
+
+    def _on_playback_finished(self) -> None:
+        self._play_timer.stop()
+        for line in self._playhead_lines:
+            line.hide()
+        self._toolbar.set_playing(False)
 
     def add_label_lane(self, name: str, editable: bool = False) -> LabelLane:
         display = _LANE_DISPLAY.get(name, name)
@@ -374,7 +431,9 @@ class AudioEditor(QWidget):
             lane.apply_theme(theme)
 
     def load(self, wav_path, cache_dir=None) -> None:
+        self._player.stop()  # don't keep playing a previous file
         wav_path = Path(wav_path)
+        self._wav_path = wav_path
         self._duration = duration_seconds(wav_path)
         # Open zoomed in so only a handful of labels render on open (no full-file render freeze).
         self.set_visible_range(0.0, min(self._duration, _INITIAL_VIEW_S) or 1.0)
@@ -412,6 +471,10 @@ class AudioEditor(QWidget):
     def clear(self) -> None:
         self.spectrogram.close_source()
 
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        self._player.stop()  # don't keep playing audio after the editor window closes
+        super().closeEvent(event)
+
     # ---- keyboard editing ----
     def event(self, e) -> bool:  # noqa: N802 - Qt override
         # Intercept Tab/Shift+Tab before Qt's focus traversal so they navigate labels instead.
@@ -439,6 +502,8 @@ class AudioEditor(QWidget):
             self._undo()
         elif (ctrl and key == Qt.Key.Key_Y) or (ctrl and shift and key == Qt.Key.Key_Z):
             self._redo()
+        elif key == Qt.Key.Key_Space:
+            self._toggle_play()
         elif key == Qt.Key.Key_Escape:
             self.close()
         elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):

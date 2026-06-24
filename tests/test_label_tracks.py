@@ -185,6 +185,25 @@ def test_audio_click_sets_cursor(qtbot):
     assert ed.selection() == (1.0, 2.0)
 
 
+def test_play_range_priority(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", []), True)])
+    assert ed._play_range() == (0.0, None)  # nothing -> whole file
+    ed.set_cursor(5.0)
+    assert ed._play_range() == (5.0, None)  # cursor -> to end
+    ed.set_selection((10.0, 20.0))
+    assert ed._play_range() == (10.0, 20.0)  # a selection wins -> play that span
+
+
+def test_toggle_play_without_audio_is_noop(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", []), True)])
+    ed._toggle_play()  # no wav loaded -> must not raise or start
+    assert not ed._player.is_playing()
+
+
 def test_editable_selection_readout(qtbot):
     ed = AudioEditor(DARK_THEME)
     qtbot.addWidget(ed)

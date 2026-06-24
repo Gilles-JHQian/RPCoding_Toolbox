@@ -22,6 +22,7 @@ class EditorToolbar(QFrame):
     zoom_in_requested = Signal()
     zoom_out_requested = Signal()
     fit_requested = Signal()
+    play_requested = Signal()
     selection_edited = Signal(float, float)  # start, end (seconds) typed into the readout
 
     def __init__(self, parent=None):
@@ -34,6 +35,11 @@ class EditorToolbar(QFrame):
         self._back = QPushButton("← Back")
         self._back.clicked.connect(self.back_requested.emit)
         lay.addWidget(self._back)
+
+        self._play = QPushButton("▶ Play")
+        self._play.setToolTip("Play / stop (Space)")
+        self._play.clicked.connect(self.play_requested.emit)
+        lay.addWidget(self._play)
 
         for glyph, tip, sig in (
             ("🔍＋", "Zoom in", self.zoom_in_requested),
@@ -118,6 +124,9 @@ class EditorToolbar(QFrame):
 
     def set_status(self, msg: str) -> None:
         self._status.setText(msg)
+
+    def set_playing(self, playing: bool) -> None:
+        self._play.setText("⏸ Stop" if playing else "▶ Play")
 
     def set_selection_text(self, span) -> None:
         # Don't clobber a field the user is currently typing into.
