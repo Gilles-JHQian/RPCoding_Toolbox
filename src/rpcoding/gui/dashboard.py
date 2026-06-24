@@ -38,6 +38,9 @@ from rpcoding.gui.workers.worker import run_in_thread
 class Dashboard(QWidget):
     open_editor = Signal(object, object)  # (SubjectSession, Step)
     theme_toggle_requested = Signal()
+    # Step progress relayed from the worker thread; a Dashboard signal -> Dashboard slot is a queued
+    # (cross-thread) connection, so the row update runs safely on the GUI thread.
+    _step_tick = Signal(object, object, str)  # (Step, fraction|None, message)
 
     def __init__(self, config: AppConfig, theme: Theme, parent=None):
         super().__init__(parent)
@@ -55,6 +58,7 @@ class Dashboard(QWidget):
         self._summary_timer.setSingleShot(True)
         self._summary_timer.setInterval(0)
         self._summary_timer.timeout.connect(self._process_next_summary)
+        self._step_tick.connect(self._on_step_progress)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -387,9 +391,18 @@ class Dashboard(QWidget):
             # The worker already recorded the error (red chip); also pop a dialog so it's visible.
             show_error(f"Step failed: {_SPECS[step].title}", message, parent=self)
 
+        def report(fraction: float | None, message: str) -> None:
+            # Called on the worker thread -> emit a signal so the row updates on the GUI thread.
+            self._step_tick.emit(step, fraction, message)
+
         self._active = run_in_thread(
-            self, run_step, self._session, step, on_finished=done, on_error=failed
+            self, run_step, self._session, step, report=report, on_finished=done, on_error=failed
         )
+
+    def _on_step_progress(self, step: Step, fraction: float | None, message: str) -> None:
+        row = self._rows.get(step)
+        if row is not None:
+            row.set_progress(fraction, message)
 
     def _show_error(self, step: Step) -> None:
         if self._session is None:

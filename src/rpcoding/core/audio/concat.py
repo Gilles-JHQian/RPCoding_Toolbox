@@ -16,6 +16,7 @@ import numpy as np
 
 from rpcoding.core.audio.io import read_wav, write_wav
 from rpcoding.core.matio import save_mat
+from rpcoding.core.progress import Reporter, noop, sub
 
 DEFAULT_PAD_SECONDS = 10.0
 
@@ -69,11 +70,14 @@ def discover_block_wavs(directory: Path | str) -> list[tuple[int, Path]]:
 
 
 def concatenate_blocks(
-    blocks: list[tuple[int, Path]], pad_seconds: float = DEFAULT_PAD_SECONDS
+    blocks: list[tuple[int, Path]],
+    pad_seconds: float = DEFAULT_PAD_SECONDS,
+    report: Reporter | None = None,
 ) -> ConcatResult:
     """Concatenate ``(block_number, path)`` wavs with inter-block silence (combine_wavs.m)."""
     if not blocks:
         raise ValueError("No block wavs to concatenate")
+    r = report or noop
 
     blocks = sorted(blocks)
     max_block = max(n for n, _ in blocks)
@@ -82,7 +86,9 @@ def concatenate_blocks(
     parts: list[np.ndarray] = []
     fs0: int | None = None
     length = 0
-    for n, path in blocks:
+    total = len(blocks)
+    for i, (n, path) in enumerate(blocks):
+        r(i / total, f"Reading block {n} ({i + 1}/{total})…")
         data, fs = read_wav(path)
         if fs0 is None:
             fs0 = fs
@@ -96,6 +102,7 @@ def concatenate_blocks(
         length += len(data) + len(pad)
 
     assert fs0 is not None
+    r(1.0, "Concatenating blocks…")
     return ConcatResult(audio=np.concatenate(parts), fs=fs0, onsets=onsets)
 
 
@@ -109,12 +116,18 @@ def combine_wavs(
     out_wav: Path | str,
     out_onsets_mat: Path | str,
     pad_seconds: float = DEFAULT_PAD_SECONDS,
+    report: Reporter | None = None,
 ) -> ConcatResult:
     """Discover blocks in ``block_dir``, concatenate, write allblocks.wav + onsets.mat."""
+    r = report or noop
     blocks = discover_block_wavs(block_dir)
     if not blocks:
         raise FileNotFoundError(f"No block wavs found in {block_dir}")
-    result = concatenate_blocks(blocks, pad_seconds=pad_seconds)
+    # Reading the per-block wavs is the bulk of the work -> give it 80% of the bar.
+    result = concatenate_blocks(blocks, pad_seconds=pad_seconds, report=sub(report, 0.0, 0.8))
+    r(0.85, "Writing allblocks.wav…")
     write_wav(out_wav, result.audio, result.fs)
+    r(0.96, "Writing block onsets…")
     save_block_wav_onsets(out_onsets_mat, result.onsets)
+    r(1.0, "Concatenation complete")
     return result

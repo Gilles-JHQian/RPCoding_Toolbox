@@ -203,6 +203,12 @@ def qss(theme: Theme) -> str:
 
     QPlainTextEdit {{ background: {p['lane-bg']}; border: 1px solid {p['border']};
                       border-radius: 7px; font-family: {MONO_FONT}; }}
+    QProgressBar {{ background: {p['lane-bg']}; border: 1px solid {p['border']};
+                    border-radius: 4px; height: 8px; text-align: center; color: {p['text-sec']};
+                    font-size: 10px; }}
+    QProgressBar::chunk {{ background: {p['accent']}; border-radius: 3px; }}
+    QProgressBar#StepProgress {{ border: none; background: {p['border']}; border-radius: 3px; }}
+    QProgressBar#StepProgress::chunk {{ background: {p['accent']}; border-radius: 3px; }}
     QToolTip {{ background: {p['toolbar']}; color: {p['text-pri']};
                 border: 1px solid {p['border-strong']}; padding: 5px 8px; }}
     QLabel#Toast {{ background: {p['toolbar']}; color: {p['text-pri']};

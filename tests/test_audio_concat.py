@@ -66,6 +66,25 @@ def test_missing_block_leaves_zero_row(tmp_path):
     assert res.onsets[2, 0] == 4 + int(10 * 500) + 1  # block 3 starts after block 1 + 10s pad
 
 
+def test_combine_wavs_reports_progress(tmp_path):
+    fs = 500
+    for n in (1, 2, 3):
+        _write(tmp_path / f"block{n}.wav", np.ones(4), fs)
+    ticks: list = []
+    concat.combine_wavs(
+        tmp_path,
+        tmp_path / "allblocks.wav",
+        tmp_path / "onsets.mat",
+        report=lambda f, m: ticks.append((f, m)),
+    )
+    # one read tick per block (mapped into the first 80%), then write/finish ending at 1.0.
+    assert any("block 1" in m.lower() for _f, m in ticks)
+    assert any("block 3" in m.lower() for _f, m in ticks)
+    fractions = [f for f, _m in ticks if f is not None]
+    assert fractions == sorted(fractions)  # monotonic, never goes backwards
+    assert ticks[-1][0] == 1.0
+
+
 def test_combine_wavs_writes_outputs(tmp_path):
     fs = 800
     _write(tmp_path / "block1.wav", np.ones(6), fs)

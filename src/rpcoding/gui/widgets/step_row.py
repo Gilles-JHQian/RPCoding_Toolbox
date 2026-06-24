@@ -5,7 +5,14 @@ from __future__ import annotations
 import html as _html
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from rpcoding.core.steps import STEP_SPECS, EffectiveState, Step, StepKind
 from rpcoding.gui.theme import MONO_FONT, Theme
@@ -64,13 +71,31 @@ class StepRow(QWidget):
         self._meta = QLabel("")
         self._meta.setObjectName("Meta")
         col.addWidget(self._meta)
+        # Second line, shown only while running: a thin determinate/indeterminate bar + live phase.
+        self._prog_row = QWidget()
+        prog_lay = QHBoxLayout(self._prog_row)
+        prog_lay.setContentsMargins(0, 1, 0, 0)
+        prog_lay.setSpacing(9)
+        self._progress = QProgressBar()
+        self._progress.setObjectName("StepProgress")
+        self._progress.setTextVisible(False)
+        self._progress.setFixedWidth(150)
+        self._progress.setFixedHeight(6)
+        prog_lay.addWidget(self._progress)
+        self._status = QLabel("")
+        self._status.setObjectName("Meta")
+        prog_lay.addWidget(self._status, 1)
+        self._prog_row.setVisible(False)
+        col.addWidget(self._prog_row)
         lay.addLayout(col, 1)
 
         self._chip = StateChip(theme)
+        self._chip.setFixedWidth(112)  # equal-width pills so the state column lines up
         self._chip.clicked.connect(lambda: self.error_details.emit(self._step))
         lay.addWidget(self._chip)
 
         self._btn = QPushButton("Run")
+        self._btn.setFixedWidth(112)  # equal-width action column next to the chips
         self._btn.clicked.connect(lambda: self.action.emit(self._step))
         lay.addWidget(self._btn)
 
@@ -100,16 +125,35 @@ class StepRow(QWidget):
     def set_running(self) -> None:
         self._dot.set_running()
         self._chip.set_running()
-        self._meta.setText("running…")
         self._btn.setText("Running…")
         self._btn.setEnabled(False)
         self._color_button(self._theme.running_color())
+        # Swap the meta line for the live progress bar (indeterminate until the first real tick).
+        self._meta.setVisible(False)
+        self._prog_row.setVisible(True)
+        self._progress.setRange(0, 0)
+        self._status.setText("Starting…")
+
+    def set_progress(self, fraction: float | None, message: str) -> None:
+        """Update the inline bar while the step runs. ``fraction`` None = indeterminate (busy)."""
+        if not self._prog_row.isVisible():  # a late tick after the row already reset
+            self.set_running()
+        if fraction is None:
+            self._progress.setRange(0, 0)  # busy / indeterminate
+        else:
+            self._progress.setRange(0, 100)
+            pct = 0 if fraction < 0 else 100 if fraction > 1 else int(round(fraction * 100))
+            self._progress.setValue(pct)
+        self._status.setText(message[:60] if message else "")
 
     def set_state(self, state: EffectiveState, meta: str = "", error: str | None = None) -> None:
         self._state = state
         self._last = (state, meta, error)
         self._dot.set_state(state)
         self._chip.set_state(state, detail=error if state == EffectiveState.ERROR else None)
+        # Back to the static meta line; hide the (now finished) progress bar.
+        self._prog_row.setVisible(False)
+        self._meta.setVisible(True)
         self._meta.setText(meta)
         self._render_name(blocked=state == EffectiveState.BLOCKED)
         self._apply_button(state)

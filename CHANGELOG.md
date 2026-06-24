@@ -57,6 +57,23 @@ in development); entries are grouped by the feature branch that delivered them, 
 - **Visual rebuild to the design handoff:** IBM Plex fonts, filled-pill state chips + status dots,
   subject-list rows, mono subject-id header with a stale/complete banner, per-state action buttons.
 
+### Step progress bars (`feat/step-progress`)
+
+- **A real progress system, end to end.** A lightweight `core/progress.py` (`Reporter` =
+  `callable(fraction, message)`; `StepProgress` for pipeline-level position) flows from the step
+  actions up through `run_step` / `run_pipeline` / `run_batch` to the GUI. Each automated step now
+  reports its phases: concatenation ticks per block read; events / write-Trials report their
+  load→compute→save phases; MFA surfaces its live stdout (banner stages bump a coarse fraction,
+  other lines scroll as the message) so you can see *where* the long alignment step is.
+- **Inline per-step bar on the dashboard:** while a step runs, its row shows a thin bar (just left
+  of the state chip, on the step's second line) plus the live phase text — determinate where the
+  fraction is known, indeterminate (busy) otherwise. Delivered on the GUI thread via a queued signal.
+- **Aligned status column:** the state chips and action buttons are now fixed-width, so *Done* /
+  *Not started* / *Manual* / *Stale* line up in tidy columns across the step list.
+- **Detailed batch dialog:** each subject row shows its **current step + phase** and a per-subject
+  bar; a fine-grained footer bar tracks overall progress (subjects done + the running subject's
+  within-pipeline fraction) instead of just whole-subject counts.
+
 ### Editor performance & interaction (`fix/editor-performance`, `fix/editor-interaction`)
 
 - **Label virtualization:** only the labels in view are rendered (recycled pool, capped); the

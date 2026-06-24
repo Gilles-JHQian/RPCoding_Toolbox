@@ -156,9 +156,7 @@ class SubjectSession:
                 # provenance available: a content-edit upstream marks this stale. Drop allblocks.wav
                 # from the recorded side too, so pre-exclusion manifests still match.
                 recorded = {k: v for k, v in rec.dep_inputs.items() if k != paths.ALLBLOCKS_WAV}
-                stale = (
-                    self._dep_fingerprints(step) != recorded or not deps_done or any_dep_stale
-                )
+                stale = self._dep_fingerprints(step) != recorded or not deps_done or any_dep_stale
             else:
                 # outputs exist but we never ran it (pre-existing): only structural staleness
                 stale = not deps_done or any_dep_stale
