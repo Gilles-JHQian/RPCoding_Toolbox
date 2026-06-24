@@ -56,7 +56,12 @@ class MainWindow(QMainWindow):
         self._editor.setWindowTitle(title)
         self._editor.set_tiers(specs)
         self._editor.configure_save(save_path)
+        # After MFA has denoised allblocks.wav in place, prefer the preserved original unless the
+        # user opted into the processed audio (Settings → MFA).
         wav = session.output_path(paths.ALLBLOCKS_WAV)
+        original = session.output_path(paths.ALLBLOCKS_ORIGINAL_WAV)
+        if not session.config.editor_use_processed_audio and original.exists():
+            wav = original
         if wav.exists():
             self._editor.load(wav, session.results_dir / ".rpcoding" / "cache")
         self._editor.show()

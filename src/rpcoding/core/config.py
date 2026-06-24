@@ -22,6 +22,8 @@ class AppConfig:
     # word / nonword stimulus lists (``*.mat``); required for the write-Trials step.
     word_list: Path | None = None
     nonword_list: Path | None = None
+    # After MFA, load the MFA-denoised allblocks.wav in the editor? Default: the preserved original.
+    editor_use_processed_audio: bool = False
 
     def __post_init__(self) -> None:
         self.droot = Path(self.droot)
@@ -45,6 +47,7 @@ class AppConfig:
             "mfa_task_map": self.mfa_task_map,
             "word_list": str(self.word_list) if self.word_list is not None else None,
             "nonword_list": str(self.nonword_list) if self.nonword_list is not None else None,
+            "editor_use_processed_audio": self.editor_use_processed_audio,
         }
 
     @classmethod
@@ -56,6 +59,7 @@ class AppConfig:
             mfa_task_map=dict(data.get("mfa_task_map", {})),
             word_list=Path(word_list) if word_list else None,
             nonword_list=Path(nonword_list) if nonword_list else None,
+            editor_use_processed_audio=bool(data.get("editor_use_processed_audio", False)),
         )
 
     def save(self, path: Path | str) -> None:

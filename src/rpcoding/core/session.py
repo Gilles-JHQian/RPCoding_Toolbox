@@ -98,6 +98,11 @@ class SubjectSession:
         fps: dict[str, str | None] = {}
         for dep in STEP_SPECS[step].deps:
             for o in STEP_SPECS[dep].outputs:
+                if o == paths.ALLBLOCKS_WAV:
+                    # MFA denoises allblocks.wav in place, which would otherwise falsely stale every
+                    # downstream step. Its sibling block_wav_onsets.mat (same concat step, untouched
+                    # by MFA) still flags a genuine re-concat.
+                    continue
                 fps[o] = fingerprint(self.output_path(o))
         return fps
 
@@ -148,9 +153,11 @@ class SubjectSession:
         # so a step is never shown as Error once its artifact is present.
         if done:
             if rec.state == "done":
-                # provenance available: a content-edit upstream marks this stale
+                # provenance available: a content-edit upstream marks this stale. Drop allblocks.wav
+                # from the recorded side too, so pre-exclusion manifests still match.
+                recorded = {k: v for k, v in rec.dep_inputs.items() if k != paths.ALLBLOCKS_WAV}
                 stale = (
-                    self._dep_fingerprints(step) != rec.dep_inputs or not deps_done or any_dep_stale
+                    self._dep_fingerprints(step) != recorded or not deps_done or any_dep_stale
                 )
             else:
                 # outputs exist but we never ran it (pre-existing): only structural staleness

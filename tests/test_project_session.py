@@ -128,6 +128,41 @@ def test_staleness_when_first_stims_edited(tmp_path):
     assert s.effective_state(Step.MAKE_EVENTS) == EffectiveState.STALE
 
 
+def _done_through_first_stims(tmp_path):
+    s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")
+    rd = s.results_dir
+    rd.mkdir(parents=True, exist_ok=True)
+    for name in (paths.ALLBLOCKS_WAV, paths.BLOCK_WAV_ONSETS_MAT, paths.TRIALINFO_MAT):
+        (rd / name).write_bytes(b"x")
+    (rd / paths.FIRST_STIMS_TXT).write_text("1\t2\t1\n", newline="\n")
+    for step in (
+        Step.CREATE_RESULTS,
+        Step.CONCAT_WAVS,
+        Step.BUILD_TRIALINFO,
+        Step.MARK_FIRST_STIMS,
+    ):
+        s.record_done(step)
+    return s, rd
+
+
+def test_mfa_denoise_does_not_stale_downstream(tmp_path):
+    # MFA overwrites allblocks.wav in place (saving the original) — must NOT stale the chain.
+    s, rd = _done_through_first_stims(tmp_path)
+    assert s.effective_state(Step.MARK_FIRST_STIMS) == EffectiveState.DONE
+    time.sleep(0.01)
+    (rd / paths.ALLBLOCKS_WAV).write_bytes(b"denoised-and-a-different-size")
+    (rd / paths.ALLBLOCKS_ORIGINAL_WAV).write_bytes(b"x")
+    assert s.effective_state(Step.MARK_FIRST_STIMS) == EffectiveState.DONE
+
+
+def test_reconcat_stales_downstream(tmp_path):
+    # A genuine re-concat rewrites block_wav_onsets.mat — that SHOULD stale the chain.
+    s, rd = _done_through_first_stims(tmp_path)
+    time.sleep(0.01)
+    (rd / paths.BLOCK_WAV_ONSETS_MAT).write_bytes(b"freshly-concatenated-onsets")
+    assert s.effective_state(Step.MARK_FIRST_STIMS) == EffectiveState.STALE
+
+
 def test_file_based_completion_without_manifest(tmp_path):
     """A subject processed by the legacy pipeline (outputs on disk, no manifest) shows green."""
     s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")
