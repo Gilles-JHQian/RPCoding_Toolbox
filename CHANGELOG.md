@@ -99,6 +99,12 @@ in development); entries are grouped by the feature branch that delivered them, 
   axis is zoomed so a label is too narrow for its text, the **text drops just below the label** (and
   sits on it when it fits). The **Vol** slider now goes to **10x** with a live readout (quiet
   recordings needed more headroom).
+- **Below-lane label text + click-to-seek** (`fix/editor-label-seek`): a too-narrow label's text now
+  drops into the **gap below the whole track** (clipping disabled + a per-lane gap), instead of the
+  lane's bottom edge where it still overlapped the chip; the text layer is also forced **above** the
+  chip shape (z-order). And clicking the timeline **while playing now seeks** — playback continues
+  from the click point instead of the playhead overwriting it (the player tears the old stream down
+  silently on a re-`play()` so the UI keeps its playing state).
 
 ### Fixed (later)
 

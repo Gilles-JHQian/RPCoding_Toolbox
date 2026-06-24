@@ -170,6 +170,7 @@ class LabelLane(QObject):
             region = pg.LinearRegionItem(values=[0, 0], movable=False)
             region.setZValue(10)
             text = pg.TextItem("", anchor=(0.5, 0.5), color=self._theme.color("label-text"))
+            text.setZValue(20)  # text always above the label shape
             self.plot.addItem(region)
             self.plot.addItem(text)
             item = _PoolItem(region, text)
@@ -200,12 +201,12 @@ class LabelLane(QObject):
             item.text.hide()
 
     def _text_y(self, start: float, end: float, label: str) -> float:
-        """0.5 (centred on the chip) if the text fits, else 0.14 (tucked just below it)."""
+        """0.5 (centred on the chip) if the text fits, else just below the lane (in the gap)."""
         t0, t1 = self._view
         if t1 > t0 and self._px > 0:
             label_px = (end - start) / (t1 - t0) * self._px
             if label_px < len(label) * _CHAR_PX + 6:
-                return 0.14
+                return -0.22  # tuck the text into the gap below the track (clipping disabled)
         return 0.5
 
     def _on_region_changing(self, item: _PoolItem) -> None:

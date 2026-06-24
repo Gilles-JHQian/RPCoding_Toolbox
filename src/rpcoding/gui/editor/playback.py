@@ -27,6 +27,7 @@ class AudioPlayer(QObject):
         self._frames_done = 0
         self._remaining = 0
         self._volume = 1.0
+        self._suppress_finished = False
 
     def set_volume(self, volume: float) -> None:
         """Output gain applied to the samples during playback (1.0 = unchanged)."""
@@ -40,8 +41,12 @@ class AudioPlayer(QObject):
         return (self._start_frame + self._frames_done) / self._fs
 
     def play(self, wav_path: Path | str, start_sec: float, end_sec: float | None) -> None:
-        """Play ``[start_sec, end_sec)`` (None = to the end). A no-op if it can't start."""
-        self.stop()
+        """Play ``[start_sec, end_sec)`` (None = to the end). A no-op if it can't start.
+
+        Calling this while already playing seeks: the old stream is torn down *without* emitting
+        ``finished`` (so the UI keeps its playing state) and a new one starts from ``start_sec``.
+        """
+        self.stop(emit=False)
         try:
             import sounddevice as sd
             import soundfile as sf
@@ -88,14 +93,17 @@ class AudioPlayer(QObject):
 
         return callback
 
-    def stop(self) -> None:
+    def stop(self, emit: bool = True) -> None:
+        # emit=False tears the stream down silently (used by play() to seek without a finished pulse).
+        self._suppress_finished = not emit
         stream, self._stream = self._stream, None
         if stream is not None:
             try:
-                stream.stop()
+                stream.stop()  # blocks until the finished_callback (_on_finished) has run
                 stream.close()
             except Exception:  # noqa: BLE001
                 pass
+        self._suppress_finished = False
         if self._file is not None:
             try:
                 self._file.close()
@@ -112,4 +120,5 @@ class AudioPlayer(QObject):
                 pass
             self._file = None
         self._stream = None
-        self.finished.emit()
+        if not self._suppress_finished:
+            self.finished.emit()
