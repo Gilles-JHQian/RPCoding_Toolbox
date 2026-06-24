@@ -182,6 +182,12 @@ cleaner view. The toolbar selection readout is editable (type a precise start/en
   each `tier_changed`). The selection span is a movable `LinearRegionItem` (drag body = move, edge =
   resize) synced through the `SelectionModel`; dragging a label updates the highlight live via the
   region's `sigRegionChanged` (the `sigRegionChangeFinished` marks the tier dirty for save/undo).
+- **Playback** ([editor/playback.py](../src/rpcoding/gui/editor/playback.py)): Space / ▶ Play streams
+  the chosen window (selection · cursor-to-end · whole file) from the wav via a sounddevice
+  `OutputStream` callback — no RAM blow-up for long ranges — with a moving playhead polled by a
+  UI-thread `QTimer`. `finished` is emitted from the audio thread and delivered on the UI thread
+  (queued) to reset the button; playback stops on close. All sounddevice use is guarded, so a missing
+  audio backend is a silent no-op.
 - The selection span highlights across all lanes; the **Trial Info** panel maps the selection
   midpoint to its trial via the cue/condition tiers. **Open** is zoomed to the first 60 s (fast first
   render); **Fit** shows the whole file.

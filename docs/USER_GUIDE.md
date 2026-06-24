@@ -85,10 +85,15 @@ adjust (the highlight follows live), press **Enter** to rename, or click an **er
 lands at the cursor, keeping its length), and **Ctrl+Z / Ctrl+Y** undo / redo. The selected label's
 span is highlighted on the waveform and spectrogram above.
 
+**Playback:** **Space** (or the **▶ Play** button) plays the audio with a moving playhead — if a
+selection/label is active it plays that span; otherwise if a cursor is set it plays from there to the
+end; otherwise it plays the whole file. Space (or the button) again stops.
+
 ### Keyboard / mouse
 
 | Shortcut | Action |
 |---|---|
+| Space / ▶ Play | Play / stop (selection span · cursor-to-end · whole file) |
 | Ctrl + wheel | Zoom the time axis about the cursor |
 | Shift + wheel | Pan the time axis |
 | Left-drag (any lane) | Select a time span |
