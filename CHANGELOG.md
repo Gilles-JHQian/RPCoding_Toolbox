@@ -142,6 +142,12 @@ in development); entries are grouped by the feature branch that delivered them, 
   **Download & install models** button runs `ensure_mfa_setup` (pip-installs missing pipeline deps,
   `mfa model download`, installs the vendored custom dicts) off the UI thread, with a **Re-check**
   button. New `mfa_status()` / `ensure_mfa_setup()` in `core/mfa/models.py`.
+- **Tab navigates the *focused* track** (`fix/editor-tab-focus`): `Tab` / `Shift+Tab` now step through
+  labels on whichever track you've selected (click a label, or `Up`/`Down` to move between tracks),
+  instead of always snapping back to the editable track. Both manual editors now behave identically —
+  they just open focused on their editable track (first-stims vs response). Split the "focused track"
+  (navigation) from the "editable track" (create / paste / save), so saving always writes the editable
+  tier regardless of which track is focused.
 
 ### Fixed (later)
 

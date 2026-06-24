@@ -100,6 +100,11 @@ alternative to dragging). **Ctrl+C / Ctrl+X / Ctrl+V** copy / cut / paste a labe
 cursor, keeping its length), and **Ctrl+Z / Ctrl+Y** undo / redo. The selected label's span is
 highlighted on the waveform and spectrogram above.
 
+**Track focus:** clicking a label (or **Up / Down**) focuses that track — its header is highlighted —
+and **Tab / Shift+Tab** then step through *that* track's labels. The editor opens focused on its
+editable track (first-stims or response), so the two manual editors behave identically. Creating
+(**Ctrl+B**), pasting, and **saving** always act on the editable track, whichever track is focused.
+
 **Playback:** **Space** (or the **▶ Play** button) plays the audio — if a selection/label is active it
 plays that span; otherwise if a cursor is set it plays from there to the end; otherwise the whole
 file. Space (or the button) again stops. The **cursor follows playback** (the view auto-scrolls to
@@ -120,13 +125,14 @@ with **…** inside the chip; **hover the label** to see its full text.
 | Ctrl + wheel | Zoom the time axis about the cursor |
 | Shift + wheel | Pan the time axis |
 | Left-drag (any lane) | Select a time span |
-| Click a label | Select it (then drag / Enter-rename / error-palette) |
+| Click a label | Select it + focus its track (then drag / Enter-rename / error-palette) |
+| Up / Down | Move the focused track up / down |
 | Drag selection edge / body | Resize / move the selection |
 | Ctrl + B | Create a label from the selection (on the editable track) |
 | Enter | Rename the selected label |
 | Ctrl + C / X / V | Copy / cut / paste the selected label |
 | Ctrl + Z / Y | Undo / redo label edits |
-| Tab / Shift+Tab | Next / previous label on the editable track |
+| Tab / Shift+Tab | Next / previous label on the **focused** track |
 | Delete / Backspace | Delete the selected label |
 | 🔍＋ / 🔍－ / Fit | Zoom in / out / show the whole file |
 | Ctrl + S | Save the editable track |
