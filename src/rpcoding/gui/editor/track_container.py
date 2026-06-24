@@ -323,7 +323,11 @@ class AudioEditor(QWidget):
         self._sel.set_span(span)
 
     def _on_selection_edited(self, a: float, b: float) -> None:
-        self.set_selection((a, b))
+        lane = self._active_lane
+        if lane is not None and lane.editable and lane.active_interval() is not None:
+            lane.resize_active(a, b)  # a label is selected -> retime the label itself
+        else:
+            self.set_selection((a, b))  # otherwise just move the free selection
         self.setFocus()  # return keyboard focus to the editor after typing in a readout field
 
     # ---- playback ----
@@ -744,7 +748,9 @@ class AudioEditor(QWidget):
                 self._trial_panel.set_trial(self._trial_index.at(mid))
         else:
             self._trial_panel.set_trial(None)
-        self._toolbar.set_selection_text(span)
+        lane = self._active_lane
+        is_label = lane is not None and lane.editable and lane.active_interval() is not None
+        self._toolbar.set_selection_text(span, is_label=is_label)
         self.selection_changed.emit(span)
 
     # ---- render ----

@@ -91,6 +91,22 @@ def test_add_label_lane(qtbot):
     assert lane.plot.getViewBox().linkedView(0) is ed._wave_plot.getViewBox()
 
 
+def test_edit_selected_label_retimes_it(qtbot):
+    from rpcoding.core.labels import Interval, Tier
+
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", [Interval(1.0, 2.0, "x")]), True)])
+    lane = ed._label_lanes[0]
+    ed._select_only(lane)
+    lane.select(0)
+    assert ed._toolbar._sel_prefix.text() == "label"  # readout retitled to the label
+    ed._on_selection_edited(1.5, 3.0)  # typing into the start/end fields retimes the label
+    iv = lane.active_interval()
+    assert abs(iv.start - 1.5) < 1e-9 and abs(iv.end - 3.0) < 1e-9
+    assert ed.selection() == (1.5, 3.0)  # the mirrored selection follows the label
+
+
 def test_header_column_tracks_tiers(qtbot):
     from rpcoding.core.labels import Tier
 

@@ -66,8 +66,19 @@ def _run_mfa(s: SubjectSession) -> None:
     patient_dir = s.results_dir.parent  # results root holding the subject folders
     home_dir = Path(s.config.droot).parent.parent  # the dir that contains 'Box'
     result = run_mfa(patient_dir, task_config, s.subject, home_dir=home_dir)
+    # Always keep the full pipeline output on disk so a failure can actually be diagnosed.
+    log_path = s.results_dir / "mfa_run.log"
+    try:
+        s.results_dir.mkdir(parents=True, exist_ok=True)
+        log_path.write_text(result.log, encoding="utf-8")
+    except OSError:
+        pass
     if result.returncode != 0:
-        raise RuntimeError(f"MFA exited with code {result.returncode}")
+        tail = "\n".join(result.log.splitlines()[-25:]).strip()
+        detail = f"\n\n--- MFA output (last lines) ---\n{tail}" if tail else ""
+        raise RuntimeError(
+            f"MFA exited with code {result.returncode}. Full log: {log_path}{detail}"
+        )
 
 
 def _write_trials(s: SubjectSession) -> None:

@@ -132,12 +132,22 @@ in development); entries are grouped by the feature branch that delivered them, 
   the ugly dark boxes behind plain text labels — the global `QWidget { background: app-bg }` was
   cascading an opaque app-bg fill onto every `QLabel` (visible over the panel/toolbar); labels are now
   `background: transparent` by default, while the state dots, chips, and toast keep their own fills.
+- **Retime a selected label from the toolbar** (`fix/label-retime-and-mfa-dep`): selecting a label now
+  retitles the toolbar readout to **"label"** and shows its start / end / length; typing into the
+  start/end fields **retimes the label itself** (not just the free selection), with the mirrored
+  selection following along. `LabelLane.resize_active` records it for undo.
 
 ### Fixed (later)
 
 - **Spectrogram worker crash:** `scipy.signal` was imported lazily inside the spectrogram builder,
   which runs on a worker thread — a first scipy import off the main thread is an access violation.
   It's now imported at module load (main thread).
+- **MFA failed with a bare "exited with code 1"** (`fix/label-retime-and-mfa-dep`): the vendored
+  pipeline imports `noisereduce` (it denoises each clip before alignment), but that dependency was
+  missing from `environment.yml`, so the subprocess died at import — *before* Hydra ran — and the
+  runner discarded the traceback, leaving only "RuntimeError: MFA exited with code 1". Added
+  `noisereduce` to the env, and `_run_mfa` now writes the full pipeline output to
+  `<results>/mfa_run.log` and includes the tail in the raised error so failures are diagnosable.
 
 ### Data compatibility
 

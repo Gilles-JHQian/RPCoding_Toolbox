@@ -86,9 +86,11 @@ dragging **outside** starts a new one (Audacity-style).
 
 **Selecting & editing labels:** click a label to select it; then drag its body or either endpoint to
 adjust (the highlight follows live), press **Enter** to rename, or click an **error-palette** button
-(right panel) to append that code. **Ctrl+C / Ctrl+X / Ctrl+V** copy / cut / paste a label (paste
-lands at the cursor, keeping its length), and **Ctrl+Z / Ctrl+Y** undo / redo. The selected label's
-span is highlighted on the waveform and spectrogram above.
+(right panel) to append that code. With a label selected the toolbar readout switches to **"label"**
+and shows its start / end / length — **typing a new start or end retimes the label itself** (a precise
+alternative to dragging). **Ctrl+C / Ctrl+X / Ctrl+V** copy / cut / paste a label (paste lands at the
+cursor, keeping its length), and **Ctrl+Z / Ctrl+Y** undo / redo. The selected label's span is
+highlighted on the waveform and spectrogram above.
 
 **Playback:** **Space** (or the **▶ Play** button) plays the audio — if a selection/label is active it
 plays that span; otherwise if a cursor is set it plays from there to the end; otherwise the whole
