@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -126,6 +127,12 @@ class Dashboard(QWidget):
         header.setObjectName("SidePanelHeader")
         hl = QHBoxLayout(header)
         hl.setContentsMargins(16, 13, 16, 13)
+        hl.setSpacing(9)
+        self._select_all = QCheckBox()
+        self._select_all.setTristate(True)
+        self._select_all.setToolTip("Select all / none")
+        self._select_all.clicked.connect(self._toggle_all)
+        hl.addWidget(self._select_all)
         title = QLabel("Subjects")
         title.setObjectName("SectionTitle")
         hl.addWidget(title)
@@ -227,9 +234,22 @@ class Dashboard(QWidget):
         if subs:
             self._summary_timer.start()
 
+    def _toggle_all(self) -> None:
+        # All-or-nothing from the current row state (ignore the checkbox's own tri-state cycle).
+        self._subjects.set_all_checked(self._subjects.selected_count() < self._subjects.count())
+
     def _update_count(self) -> None:
         found = self._subjects.count()
-        self._subj_count.setText(f"{found} found · {self._subjects.selected_count()} selected")
+        sel = self._subjects.selected_count()
+        self._subj_count.setText(f"{found} found · {sel} selected")
+        self._select_all.blockSignals(True)
+        if found and sel == found:
+            self._select_all.setCheckState(Qt.CheckState.Checked)
+        elif sel == 0:
+            self._select_all.setCheckState(Qt.CheckState.Unchecked)
+        else:
+            self._select_all.setCheckState(Qt.CheckState.PartiallyChecked)
+        self._select_all.blockSignals(False)
 
     def _process_next_summary(self) -> None:
         if not self._summary_queue:

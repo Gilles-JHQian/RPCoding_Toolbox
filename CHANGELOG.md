@@ -127,6 +127,11 @@ in development); entries are grouped by the feature branch that delivered them, 
   per-theme soft-fill alpha (`Theme.soft_alpha`). Button/combobox paddings, header backgrounds, and
   a bottom-centre **toast** (used by Save list) round it out. **Save list** persists the checked
   subjects per task and restores them on the next scan.
+- **Select-all + no more label boxes** (`fix/dashboard-labels-select-all`): a **tri-state select-all
+  checkbox** in the Subjects header checks/unchecks every subject at once (and shows partial). Fixed
+  the ugly dark boxes behind plain text labels — the global `QWidget { background: app-bg }` was
+  cascading an opaque app-bg fill onto every `QLabel` (visible over the panel/toolbar); labels are now
+  `background: transparent` by default, while the state dots, chips, and toast keep their own fills.
 
 ### Fixed (later)
 

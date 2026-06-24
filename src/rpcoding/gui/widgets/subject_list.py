@@ -81,6 +81,14 @@ class SubjectList(QListWidget):
         for sid, row in self._rows.items():
             row.check.setChecked(sid in wanted)
 
+    def set_all_checked(self, checked: bool) -> None:
+        """Check / uncheck every row, emitting ``selection_changed`` once (not per row)."""
+        for row in self._rows.values():
+            row.check.blockSignals(True)
+            row.check.setChecked(checked)
+            row.check.blockSignals(False)
+        self.selection_changed.emit()
+
     def set_theme(self, theme: Theme) -> None:
         self._theme = theme
         for row in self._rows.values():

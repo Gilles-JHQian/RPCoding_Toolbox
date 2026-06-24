@@ -169,6 +169,31 @@ def test_save_and_restore_subject_list(qtbot, tmp_path, monkeypatch):
     assert dash._subjects.checked_subjects() == ["D2"]
 
 
+def test_select_all_toggle(qtbot, tmp_path):
+    dash = Dashboard(AppConfig(droot=tmp_path), DARK_THEME)
+    qtbot.addWidget(dash)
+    dash._subjects.set_subjects(["D1", "D2", "D3"])
+    dash._update_count()
+    assert dash._select_all.checkState() == Qt.CheckState.Checked  # all checked by default
+    dash._toggle_all()  # all -> none
+    assert dash._subjects.selected_count() == 0
+    assert dash._select_all.checkState() == Qt.CheckState.Unchecked
+    dash._toggle_all()  # none -> all
+    assert dash._subjects.selected_count() == 3
+    dash._subjects._rows["D2"].check.setChecked(False)  # partial
+    assert dash._select_all.checkState() == Qt.CheckState.PartiallyChecked
+    dash._toggle_all()  # partial -> all
+    assert dash._subjects.selected_count() == 3
+
+
+def test_qss_label_background_transparent():
+    from rpcoding.gui.theme import LIGHT_THEME, qss
+
+    # Plain labels must be transparent so they don't paint an app-bg box over a coloured parent.
+    for theme in (DARK_THEME, LIGHT_THEME):
+        assert "QLabel { background: transparent" in qss(theme)
+
+
 def test_step_row_manual_tag_and_mono_filename(qtbot):
     manual = StepRow(DARK_THEME, Step.MARK_FIRST_STIMS, 5)
     qtbot.addWidget(manual)

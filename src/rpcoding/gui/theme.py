@@ -123,6 +123,10 @@ def qss(theme: Theme) -> str:
     return f"""
     QWidget {{ background: {p['app-bg']}; color: {p['text-pri']};
                font-family: {UI_FONT}; font-size: 13px; }}
+    /* Labels are transparent by default so plain text never paints an app-bg box over a
+       differently-coloured parent (panel / toolbar). Widgets that want a fill (state dots, the
+       chip, the toast) set their own background, which wins over this rule. */
+    QLabel {{ background: transparent; }}
     QFrame#Panel {{ background: {p['panel']}; border: 1px solid {p['border']};
                     border-radius: 9px; }}
     QFrame#SidePanel {{ background: {p['panel']}; border: none;
