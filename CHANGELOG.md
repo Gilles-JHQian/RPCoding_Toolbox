@@ -170,6 +170,13 @@ in development); entries are grouped by the feature branch that delivered them, 
   chip). The write-Trials step no longer demands manual configuration: it **defaults to the lab's
   bundled `word_lst.mat` / `nonword_lst.mat`** (vendored under `core/rpcode/wordlists/`, mirroring how
   MATLAB `load`ed them from the path); Settings still lets you point at your own (blank = bundled).
+- **`Trials.mat` is now a struct array (parity)** (`fix/trials-struct-array`): write-Trials was saving
+  a numpy `object` array of dicts, which scipy writes as a MATLAB **cell array of structs** — so our
+  `Trials.mat` was a cell array (and larger, since every cell re-stores the field names) where the
+  MATLAB pipeline produces a 1×N **struct array**. `save_trials` now builds a structured-dtype array
+  → a real struct array. Also made `generate_trials` **idempotent** like the MATLAB: a re-run starts
+  from the untouched `Trials_org.mat` backup instead of the previous output. (Re-run write-Trials on
+  affected subjects to rewrite their `Trials.mat`.)
 
 ### Fixed (later)
 
