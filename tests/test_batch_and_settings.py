@@ -64,12 +64,30 @@ def test_batch_dialog_rows_and_progress(qtbot, tmp_path):
     dlg = BatchDialog(AppConfig(droot=tmp_path), Task.LEXICAL_NODELAY, ["D100", "D101"])
     qtbot.addWidget(dlg)
     assert dlg._table.rowCount() == 2
-    assert dlg._bar.maximum() == 2
+    scale = dlg._bar.maximum()  # fine-grained footer bar
 
     dlg._on_subject_done("D100", "ok", "[]")
     assert dlg._table.item(0, 1).text() == "✓ ran"
-    assert dlg._bar.value() == 1
+    assert dlg._bar.value() == scale // 2  # 1 of 2 subjects done
 
     dlg._on_subject_done("D101", "error", "RuntimeError: boom")
     assert "boom" in dlg._table.item(1, 1).text()
-    assert dlg._bar.value() == 2
+    assert dlg._bar.value() == scale
+
+
+def test_batch_dialog_step_progress(qtbot, tmp_path):
+    dlg = BatchDialog(AppConfig(droot=tmp_path), Task.LEXICAL_NODELAY, ["D100", "D101"])
+    qtbot.addWidget(dlg)
+    scale = dlg._bar.maximum()
+    # A mid-step tick updates that subject's row text + per-row bar, and the overall bar.
+    dlg._on_step_tick("D100", "Concatenate WAVs → allblocks.wav", 0.5, "Reading block 3…", 0.4)
+    assert "Concatenate" in dlg._table.item(0, 1).text()
+    bar = dlg._bars["D100"]
+    assert (bar.minimum(), bar.maximum()) == (0, 100)
+    assert bar.value() == 50
+    # overall = (0 done + 0.4 within-pipeline) / 2 subjects
+    assert dlg._bar.value() == round(0.4 / 2 * scale)
+
+    # Indeterminate tick -> the per-row bar goes busy.
+    dlg._on_step_tick("D100", "MFA forced alignment", None, "Running forced alignment…", 0.6)
+    assert dlg._bars["D100"].maximum() == 0

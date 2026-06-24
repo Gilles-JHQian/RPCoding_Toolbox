@@ -270,6 +270,32 @@ def test_run_pipeline_stops_at_manual(tmp_path):
     assert s.effective_state(Step.MAKE_EVENTS) == EffectiveState.BLOCKED
 
 
+def test_run_step_reports_progress(tmp_path):
+    cfg = _build_subject(tmp_path)
+    s = SubjectSession(cfg, _TASK, "D9")
+    ticks: list = []
+    run_step(s, Step.CREATE_RESULTS, report=lambda f, m: ticks.append((f, m)))
+    assert ticks and ticks[-1][0] == 1.0  # ends at 100%
+    assert all(isinstance(m, str) and m for _f, m in ticks)
+
+
+def test_run_pipeline_reports_step_progress(tmp_path):
+    cfg = _build_subject(tmp_path)
+    s = SubjectSession(cfg, _TASK, "D9")
+    events: list = []
+    ran = run_pipeline(s, on_step=events.append)
+    assert ran == [Step.CREATE_RESULTS, Step.CONCAT_WAVS, Step.BUILD_TRIALINFO]
+    # Every event knows the pass has 3 runnable steps; steps appear in order with 1-based indices.
+    assert {e.total for e in events} == {3}
+    first_seen = list(dict.fromkeys(e.step for e in events))
+    assert first_seen == [Step.CREATE_RESULTS, Step.CONCAT_WAVS, Step.BUILD_TRIALINFO]
+    assert {e.index for e in events} == {1, 2, 3}
+    overalls = [e.overall for e in events]
+    pairs = zip(overalls, overalls[1:], strict=False)
+    assert all(b >= a - 1e-9 for a, b in pairs)  # never goes backwards
+    assert overalls[-1] == 1.0
+
+
 def test_run_step_records_error(tmp_path):
     # no raw data -> concat fails; error recorded and re-raised
     s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")

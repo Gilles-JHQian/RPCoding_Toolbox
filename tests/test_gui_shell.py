@@ -129,6 +129,43 @@ def test_step_row_states(qtbot):
     assert manual.findChild(QPushButton).text() == "Open editor"
 
 
+def test_step_row_inline_progress(qtbot):
+    row = StepRow(DARK_THEME, Step.CONCAT_WAVS, 2)
+    qtbot.addWidget(row)
+    row.show()
+    # Idle: the progress row is hidden, the meta line is shown.
+    assert not row._prog_row.isVisibleTo(row)
+
+    row.set_running()
+    assert row._prog_row.isVisibleTo(row)
+    assert not row._meta.isVisibleTo(row)
+    assert row._progress.maximum() == 0  # indeterminate until the first real tick
+
+    row.set_progress(0.5, "Reading block 3 (3/6)…")
+    assert (row._progress.minimum(), row._progress.maximum()) == (0, 100)
+    assert row._progress.value() == 50
+    assert "block 3" in row._status.text()
+
+    row.set_progress(None, "Merging…")  # indeterminate again
+    assert row._progress.maximum() == 0
+
+    # Finishing flips back to the static state; the bar hides.
+    row.set_state(EffectiveState.DONE, "ran just now")
+    assert not row._prog_row.isVisibleTo(row)
+    assert row._meta.isVisibleTo(row)
+
+
+def test_step_row_chip_and_button_aligned(qtbot):
+    # Equal-width chip + action columns so the state column lines up across rows.
+    a = StepRow(DARK_THEME, Step.CONCAT_WAVS, 2)
+    b = StepRow(DARK_THEME, Step.MARK_FIRST_STIMS, 5)
+    qtbot.addWidget(a)
+    qtbot.addWidget(b)
+    # Fixed widths line up regardless of layout pass (min == max == fixed).
+    assert a._chip.maximumWidth() == b._chip.maximumWidth() == 112
+    assert a.findChild(QPushButton).maximumWidth() == 112
+
+
 def test_dashboard_scan(qtbot, tmp_path):
     dd = paths.d_data_dir(tmp_path, Task.LEXICAL_NODELAY)
     (dd / "D9").mkdir(parents=True)
