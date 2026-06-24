@@ -106,6 +106,11 @@ class Theme:
     def running_color(self) -> str:
         return _RUNNING[0 if self.name == "dark" else 1]
 
+    @property
+    def soft_alpha(self) -> float:
+        # The prototype's state soft-fills use 0x22 (dark) / 0x1f (light) alpha — see dot()/chip().
+        return 0.133 if self.name == "dark" else 0.122
+
 
 DARK_THEME = Theme("dark", DARK)
 LIGHT_THEME = Theme("light", LIGHT)
@@ -137,37 +142,51 @@ def qss(theme: Theme) -> str:
                      border-bottom: 1px solid {p['border']}; }}
     QFrame#PanelHeader {{ background: {p['app-bg']}; border: none;
                           border-bottom: 1px solid {p['border']}; }}
+    QFrame#SidePanelHeader, QFrame#FilterRow {{ background: {p['panel']}; border: none;
+                          border-bottom: 1px solid {p['border']}; }}
     QFrame#HLine {{ background: {p['border']}; max-height: 1px; min-height: 1px; border: none; }}
 
     QLabel#SubjectId {{ font-family: {MONO_FONT}; font-size: 18px; font-weight: 600; }}
     QLabel#SectionTitle {{ font-size: 13px; font-weight: 600; }}
     QLabel#Secondary {{ color: {p['text-sec']}; }}
+    QLabel#SubPath {{ color: {p['text-ter']}; font-size: 13px; }}
+    QLabel#SubjCount {{ color: {p['text-ter']}; font-family: {MONO_FONT}; font-size: 12px; }}
     QLabel#Meta {{ color: {p['text-ter']}; font-family: {MONO_FONT}; font-size: 11px; }}
+    QLabel#StepIndex {{ color: {p['text-ter']}; font-family: {MONO_FONT};
+                        font-size: 12px; font-weight: 600; }}
     QLabel#Mono {{ font-family: {MONO_FONT}; }}
     QLabel#Banner {{ font-size: 12px; }}
 
     QPushButton {{ background: {p['btn-bg']}; border: 1px solid {p['btn-border']};
-                   border-radius: 7px; padding: 6px 13px; color: {p['text-sec']}; }}
+                   border-radius: 7px; padding: 8px 14px; color: {p['text-sec']}; }}
     QPushButton:hover {{ border-color: {p['accent']}; color: {p['text-pri']}; }}
     QPushButton:disabled {{ color: {p['text-ter']}; border-color: {p['border']};
                             background: {p['app-bg']}; }}
     QPushButton#Primary {{ background: {p['accent']}; border: none; color: #ffffff;
-                           font-weight: 600; padding: 8px 16px; }}
+                           font-weight: 600; padding: 9px 16px; }}
     QPushButton#Primary:hover {{ background: {p['accent']}; }}
     QPushButton#Accent {{ background: {p['accent-soft']}; border: 1px solid {p['accent']};
                           color: {p['accent']}; font-weight: 600; }}
     QPushButton#Accent:hover {{ background: {p['accent-soft']}; border-color: {p['accent']};
                                 color: {p['accent']}; }}
     QPushButton#Icon {{ padding: 7px 11px; }}
+    QPushButton#IconSmall {{ padding: 6px 9px; font-size: 12px; border-radius: 6px; }}
+    QPushButton#ThemeToggle {{ padding: 8px 12px; font-size: 12px; }}
     QFrame#ToolSep {{ background: {p['border']}; border: none; max-width: 1px; }}
 
-    QComboBox, QLineEdit {{ background: {p['btn-bg']}; border: 1px solid {p['btn-border']};
-                            border-radius: 7px; padding: 6px 11px; color: {p['text-pri']}; }}
-    QComboBox {{ font-family: {MONO_FONT}; }}
+    QLineEdit {{ background: {p['btn-bg']}; border: 1px solid {p['btn-border']};
+                 border-radius: 7px; padding: 6px 11px; color: {p['text-pri']}; }}
+    QLineEdit#FilterInput {{ background: {p['app-bg']}; border-radius: 6px; padding: 6px 10px;
+                             font-size: 12px; color: {p['text-pri']}; }}
+    QComboBox {{ background: {p['btn-bg']}; border: 1px solid {p['btn-border']};
+                 border-radius: 7px; padding: 8px 13px; color: {p['text-pri']};
+                 font-family: {MONO_FONT}; }}
+    QComboBox::drop-down {{ border: none; width: 22px; }}
     QComboBox QAbstractItemView {{ background: {p['panel']}; border: 1px solid {p['border-strong']};
                                    selection-background-color: {p['accent-soft']}; outline: none; }}
 
     QListWidget {{ background: {p['panel']}; border: none; outline: none; }}
+    QListWidget#SubjectList {{ padding: 6px 0; }}
     QListWidget::item {{ border: none; padding: 0px; }}
     QListWidget::item:selected {{ background: transparent; }}
 
@@ -182,4 +201,7 @@ def qss(theme: Theme) -> str:
                       border-radius: 7px; font-family: {MONO_FONT}; }}
     QToolTip {{ background: {p['toolbar']}; color: {p['text-pri']};
                 border: 1px solid {p['border-strong']}; padding: 5px 8px; }}
+    QLabel#Toast {{ background: {p['toolbar']}; color: {p['text-pri']};
+                    border: 1px solid {p['border-strong']}; border-radius: 8px;
+                    padding: 9px 16px; font-size: 12px; }}
     """

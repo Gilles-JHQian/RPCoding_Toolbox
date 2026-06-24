@@ -127,3 +127,53 @@ def test_dashboard_manual_step_opens_editor(qtbot, tmp_path):
     dash.open_editor.connect(lambda _s, step: got.append(step))
     dash._on_step_action(Step.MARK_FIRST_STIMS)
     assert got == [Step.MARK_FIRST_STIMS]
+
+
+def test_subject_count_format_and_selection(qtbot, tmp_path):
+    dash = Dashboard(AppConfig(droot=tmp_path), DARK_THEME)
+    qtbot.addWidget(dash)
+    dash._subjects.set_subjects(["D1", "D2", "D3"])
+    dash._update_count()
+    assert dash._subj_count.text() == "3 found · 3 selected"
+    dash._subjects._rows["D1"].check.setChecked(False)  # toggling updates the count live
+    assert dash._subj_count.text() == "3 found · 2 selected"
+
+
+def test_subject_filter_and_add_remove(qtbot, tmp_path):
+    dash = Dashboard(AppConfig(droot=tmp_path), DARK_THEME)
+    qtbot.addWidget(dash)
+    dash._subjects.set_subjects(["D12", "D14", "S03"])
+    dash._filter.setText("d1")
+    assert dash._subjects._items["S03"].isHidden()
+    assert not dash._subjects._items["D12"].isHidden()
+    dash._filter.setText("D99")
+    dash._add_subject()
+    assert "D99" in dash._subjects._rows and dash._filter.text() == ""
+    dash._subjects.setCurrentItem(dash._subjects._items["D99"])
+    dash._remove_subject()
+    assert "D99" not in dash._subjects._rows
+
+
+def test_save_and_restore_subject_list(qtbot, tmp_path, monkeypatch):
+    import rpcoding.gui.config as gcfg
+
+    monkeypatch.setattr(gcfg, "config_dir", lambda: tmp_path)
+    for sid in ("D1", "D2", "D3"):
+        _make_subject_dir(tmp_path, Task.LEXICAL_NODELAY, sid)
+    dash = Dashboard(AppConfig(droot=tmp_path), DARK_THEME)
+    qtbot.addWidget(dash)
+    dash._scan()
+    dash._subjects.set_checked(["D2"])
+    dash._save_list()
+    dash._scan()  # rescans and restores the saved selection
+    assert dash._subjects.checked_subjects() == ["D2"]
+
+
+def test_step_row_manual_tag_and_mono_filename(qtbot):
+    manual = StepRow(DARK_THEME, Step.MARK_FIRST_STIMS, 5)
+    qtbot.addWidget(manual)
+    assert manual._manual and manual._manual_tag.isVisibleTo(manual)
+    assert "first_stims.txt" in manual._name.text() and "font-family" in manual._name.text()
+    auto = StepRow(DARK_THEME, Step.CREATE_RESULTS, 1)
+    qtbot.addWidget(auto)
+    assert not auto._manual and not auto._manual_tag.isVisibleTo(auto)

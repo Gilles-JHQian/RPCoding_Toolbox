@@ -49,7 +49,7 @@ STEP_SPECS: dict[Step, StepSpec] = {
     _S.CREATE_RESULTS: StepSpec(_S.CREATE_RESULTS, "Create results folder", StepKind.AUTO, (), ()),
     _S.CONCAT_WAVS: StepSpec(
         _S.CONCAT_WAVS,
-        "Concatenate WAVs",
+        "Concatenate WAVs → allblocks.wav",
         StepKind.AUTO,
         (_S.CREATE_RESULTS,),
         (paths.ALLBLOCKS_WAV, paths.BLOCK_WAV_ONSETS_MAT),
@@ -66,7 +66,7 @@ STEP_SPECS: dict[Step, StepSpec] = {
     ),
     _S.MARK_FIRST_STIMS: StepSpec(
         _S.MARK_FIRST_STIMS,
-        "Mark first stimuli",
+        "Mark first stimuli → first_stims.txt",
         StepKind.MANUAL,
         (_S.CONCAT_WAVS,),
         (paths.FIRST_STIMS_TXT,),
@@ -94,7 +94,7 @@ STEP_SPECS: dict[Step, StepSpec] = {
     ),
     _S.WRITE_TRIALS: StepSpec(
         _S.WRITE_TRIALS,
-        "Write response coding to Trials.mat",
+        "Write response coding → Trials.mat",
         StepKind.AUTO,
         (_S.RESPONSE_CODING,),
         (),  # writes into D_Data/**/mat, not the results dir
