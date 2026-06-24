@@ -17,10 +17,10 @@ from PySide6.QtGui import QColor
 from rpcoding.core.labels import Interval, Tier
 from rpcoding.gui.theme import Theme
 
-LABEL_LANE_HEIGHT = 44
-_UNSEL = "#3a4250"
+LABEL_LANE_HEIGHT = 46
 _MAX_RENDER = 120  # hard cap on region items rendered per lane (sampled beyond this)
 _TEXT_LIMIT = 80  # show interval text only when at most this many are rendered
+_CHAR_PX = 7.5  # rough mono glyph width, to decide if a label's text fits inside it
 
 
 class _PoolItem:
@@ -49,6 +49,7 @@ class LabelLane(QObject):
         self._pool: list[_PoolItem] = []
         self._used = 0
         self._view = (0.0, 1.0)
+        self._px = 1
         self._binding = False
 
         vb = plot.getViewBox()
@@ -138,6 +139,7 @@ class LabelLane(QObject):
     # ---- virtualized rendering ----
     def set_view(self, t0: float, t1: float, px: int) -> None:
         self._view = (t0, t1)
+        self._px = px
         self._render()
 
     def _visible_indices(self) -> list[int]:
@@ -167,7 +169,7 @@ class LabelLane(QObject):
             # Movable only while selected (set in _bind), so plain clicks reach the lane to select.
             region = pg.LinearRegionItem(values=[0, 0], movable=False)
             region.setZValue(10)
-            text = pg.TextItem("", anchor=(0.5, 0.5), color=self._theme.color("text-pri"))
+            text = pg.TextItem("", anchor=(0.5, 0.5), color=self._theme.color("label-text"))
             self.plot.addItem(region)
             self.plot.addItem(text)
             item = _PoolItem(region, text)
@@ -187,13 +189,24 @@ class LabelLane(QObject):
         self._binding = False
         item.region.setMovable(self.editable and idx == self._active)  # drag only when selected
         item.region.show()
-        self._style_region(item.region, selected=idx == self._active)
+        selected = idx == self._active
+        self._style_region(item.region, selected=selected)
         if show_text and iv.label:
             item.text.setText(iv.label)
-            item.text.setPos((iv.start + iv.end) / 2.0, 0.5)
+            item.text.setColor(self._theme.color("text-pri" if selected else "label-text"))
+            item.text.setPos((iv.start + iv.end) / 2.0, self._text_y(iv.start, iv.end, iv.label))
             item.text.show()
         else:
             item.text.hide()
+
+    def _text_y(self, start: float, end: float, label: str) -> float:
+        """0.5 (centred on the chip) if the text fits, else 0.14 (tucked just below it)."""
+        t0, t1 = self._view
+        if t1 > t0 and self._px > 0:
+            label_px = (end - start) / (t1 - t0) * self._px
+            if label_px < len(label) * _CHAR_PX + 6:
+                return 0.14
+        return 0.5
 
     def _on_region_changing(self, item: _PoolItem) -> None:
         """Live during a drag: update the interval + cross-lane highlight (no tier_changed yet)."""
@@ -202,7 +215,7 @@ class LabelLane(QObject):
         a, b = item.region.getRegion()
         old = self._intervals[item.idx]
         self._intervals[item.idx] = Interval(min(a, b), max(a, b), old.label)
-        item.text.setPos((a + b) / 2.0, 0.5)
+        item.text.setPos((a + b) / 2.0, self._text_y(a, b, old.label))
         if item.idx == self._active:
             self._emit_active()  # highlight follows the drag in real time
 
@@ -216,17 +229,23 @@ class LabelLane(QObject):
         self.label_selected.emit(self.active_interval())
 
     def _style_region(self, region, selected: bool) -> None:
-        accent = self._theme.color("accent")
-        fill = QColor(accent if selected else _UNSEL)
-        fill.setAlpha(120 if selected else 60)
+        if selected:
+            fill = QColor(self._theme.color("accent"))
+            fill.setAlpha(64)
+            pen = pg.mkPen(self._theme.color("accent"), width=2)
+        else:
+            fill = QColor(self._theme.color("label-bg"))
+            fill.setAlpha(190)
+            pen = pg.mkPen(self._theme.color("label-border"), width=1)
         region.setBrush(pg.mkBrush(fill))
-        pen = pg.mkPen(accent if selected else _UNSEL, width=2 if selected else 1)
         for line in region.lines:
             line.setPen(pen)
 
     def apply_theme(self, theme: Theme) -> None:
         self._theme = theme
-        self.plot.getViewBox().setBackgroundColor(theme.color("lane-bg"))
+        bg = theme.color("response-bg" if self.editable else "lane-bg")
+        self.plot.getViewBox().setBackgroundColor(bg)
         for item in self._pool[: self._used]:
-            self._style_region(item.region, selected=item.idx == self._active)
-            item.text.setColor(theme.color("text-pri"))
+            selected = item.idx == self._active
+            self._style_region(item.region, selected=selected)
+            item.text.setColor(theme.color("text-pri" if selected else "label-text"))

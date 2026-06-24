@@ -12,6 +12,11 @@ from hashlib import blake2b
 from pathlib import Path
 
 import numpy as np
+from numpy.lib.format import open_memmap
+
+# Imported at module load (main thread): a *first* scipy import on the spectrogram worker thread
+# (where build_log_spectrogram runs) is an access violation with scipy's C extensions.
+from scipy.signal import stft
 
 SPECTRO_VERSION = 1
 
@@ -79,8 +84,6 @@ def build_log_spectrogram(
 ) -> dict:
     """Build the memmapped log-spectrogram; returns a meta dict (shape, dt, p2/p98, ...)."""
     import soundfile as sf
-    from numpy.lib.format import open_memmap
-    from scipy.signal import stft
 
     params = params or StftParams()
     info = sf.info(str(wav_path))
