@@ -92,6 +92,19 @@ in development); entries are grouped by the feature branch that delivered them, 
   (independent of the waveform display amplitude). The **cursor doubles as the playhead** — it tracks
   playback, the view auto-scrolls to keep it visible, and on stop the cursor is left exactly where
   playback paused (so Space resumes from there).
+- **Editor look + theme fix** (`feat/editor-theme-labels`): the editor now fully follows the design
+  tokens in **both** light and dark — fixing the bug where the editor background stayed dark in light
+  mode (the plot surface, lane fills, track names, selection/cursor all re-theme now). Labels are
+  styled as chips (`label-bg`/`label-border`/`label-text`), the response lane is tinted. When the time
+  axis is zoomed so a label is too narrow for its text, the **text drops just below the label** (and
+  sits on it when it fits). The **Vol** slider now goes to **10x** with a live readout (quiet
+  recordings needed more headroom).
+
+### Fixed (later)
+
+- **Spectrogram worker crash:** `scipy.signal` was imported lazily inside the spectrogram builder,
+  which runs on a worker thread — a first scipy import off the main thread is an access violation.
+  It's now imported at module load (main thread).
 
 ### Data compatibility
 
