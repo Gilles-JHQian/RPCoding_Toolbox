@@ -33,6 +33,7 @@ class MainWindow(QMainWindow):
         self._editor.resize(1240, 820)
         self._editor.saved.connect(self._on_editor_saved)
         self._editor.back_requested.connect(self._close_editor)
+        self._editor.theme_toggle_requested.connect(self.toggle_theme)
         self._editing: tuple | None = None  # (SubjectSession, Step) currently open in the editor
 
         self.apply_theme(theme)

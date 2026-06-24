@@ -94,7 +94,7 @@ class AudioPlayer(QObject):
         return callback
 
     def stop(self, emit: bool = True) -> None:
-        # emit=False tears the stream down silently (used by play() to seek without a finished pulse).
+        # emit=False: tear down silently — play() uses it to seek without a finished pulse.
         self._suppress_finished = not emit
         stream, self._stream = self._stream, None
         if stream is not None:

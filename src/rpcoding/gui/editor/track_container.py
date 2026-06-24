@@ -11,13 +11,14 @@ from pathlib import Path
 import pyqtgraph as pg
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QGraphicsItem, QHBoxLayout, QInputDialog, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QInputDialog, QVBoxLayout, QWidget
 
 from rpcoding.core.audio.io import duration_seconds
 from rpcoding.core.audio.render.cache import AudioRenderCache
 from rpcoding.core.labels import Interval, Tier, write_tier
 from rpcoding.core.trial_index import TrialIndex
 from rpcoding.gui.editor.debounce import RangeDebouncer
+from rpcoding.gui.editor.header_column import LaneHeaderColumn
 from rpcoding.gui.editor.interactive_viewbox import InteractiveViewBox
 from rpcoding.gui.editor.label_lane import LABEL_LANE_HEIGHT, LabelLane
 from rpcoding.gui.editor.playback import AudioPlayer
@@ -32,11 +33,10 @@ from rpcoding.gui.workers.worker import run_in_thread
 
 pg.setConfigOptions(imageAxisOrder="row-major")
 
-_NAME_W = 104  # width of the left track-name column
 _RULER_H = 26
 _WAVE_H = 100  # waveform a bit shorter ...
 _SPEC_H = 176  # ... spectrogram taller
-_LANE_GAP = 20  # gap below each label lane; a too-short label's text is tucked into it
+_SPACER_ROW = 64  # a reserved high GLW row holding the bottom stretch (keeps fixed rows top-packed)
 _INITIAL_VIEW_S = 60.0  # open zoomed to this window (fast first render); Fit shows the whole file
 
 # Friendly left-column names for the lanes (the internal tier name still drives the trial index).
@@ -69,6 +69,7 @@ class AudioEditor(QWidget):
     load_failed = Signal(str)
     saved = Signal()
     back_requested = Signal()
+    theme_toggle_requested = Signal()  # the toolbar ◑ button; the app flips dark/light
     # Internal: the render workers emit these (cross-thread); connected to UI-thread slots so the
     # actual pyqtgraph work always runs on the GUI thread (touching graphics off-thread crashes Qt).
     _pyramid_ready = Signal(int, object, object)  # token, pyramid, wav_path
@@ -85,9 +86,9 @@ class AudioEditor(QWidget):
         self._jobs: list = []
         self._label_lanes: list[LabelLane] = []
         self._lane_plots: list[pg.PlotItem] = []
-        self._lane_labels: list[pg.LabelItem] = []
         self._focus_lane: LabelLane | None = None
         self._active_lane: LabelLane | None = None  # lane whose label is currently selected
+        self._amp_scale = 1.0
         self._trial_index: TrialIndex | None = None
         self._save_path: Path | None = None
         self._clipboard: Interval | None = None
@@ -103,7 +104,6 @@ class AudioEditor(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         self._toolbar = EditorToolbar()
-        self._toolbar.amplitude_changed.connect(self.set_amplitude_scale)
         self._toolbar.save_requested.connect(self.save)
         self._toolbar.back_requested.connect(self.back_requested.emit)
         self._toolbar.zoom_in_requested.connect(lambda: self.zoom(0.6))
@@ -112,37 +112,58 @@ class AudioEditor(QWidget):
         self._toolbar.selection_edited.connect(self._on_selection_edited)
         self._toolbar.play_requested.connect(self._toggle_play)
         self._toolbar.volume_changed.connect(self._on_volume_changed)
+        self._toolbar.add_label_requested.connect(self._create_label_from_selection)
+        self._toolbar.copy_requested.connect(self._copy_active)
+        self._toolbar.paste_requested.connect(self._paste)
+        self._toolbar.theme_toggle_requested.connect(self.theme_toggle_requested.emit)
         outer.addWidget(self._toolbar)
 
+        # body = [170px header column | plot column (pyqtgraph) | 272px Trial Info]
         body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
         outer.addLayout(body, 1)
+
+        self._header = LaneHeaderColumn(theme, _RULER_H, _WAVE_H, _SPEC_H)
+        self._header.amp_up.connect(lambda: self._nudge_amp(1.3))
+        self._header.amp_down.connect(lambda: self._nudge_amp(0.77))
+        body.addWidget(self._header)
+
         self._glw = pg.GraphicsLayoutWidget()
-        self._glw.setBackground(theme.color("panel"))
+        self._glw.setFrameShape(QFrame.Shape.NoFrame)
+        self._glw.setBackground(theme.color("lane-bg"))
+        self._glw.ci.layout.setContentsMargins(0, 0, 0, 0)
+        self._glw.ci.layout.setSpacing(0)  # rows abut; heights match the header column exactly
         body.addWidget(self._glw, 1)
         self._glw.scene().sigMouseClicked.connect(self._on_scene_click)
+
         self._trial_panel = TrialInfoPanel()
         self._trial_panel.error_code_picked.connect(self._on_error_code)
         body.addWidget(self._trial_panel)
 
-        self._glw.ci.layout.setColumnFixedWidth(0, _NAME_W)  # the track-name column
-        self._glw.ci.layout.setColumnStretchFactor(1, 1)  # plots take the rest
+        self._glw.ci.layout.setColumnStretchFactor(0, 1)  # col 0 = plots; col 1 = histogram
+        # a reserved high row holds the bottom stretch, so the fixed rows stay packed at the top
+        self._glw.addItem(pg.GraphicsLayout(), row=_SPACER_ROW, col=0)
+        self._glw.ci.layout.setRowStretchFactor(_SPACER_ROW, 1)
 
         self._ruler = self._add_row(
-            "",
             _RULER_H,
             axis={"bottom": TimeAxisItem(orientation="bottom")},
             viewbox=InteractiveViewBox(),
         )
-        self._wave_plot = self._add_row("Waveform", _WAVE_H, viewbox=InteractiveViewBox())
+        self._wave_plot = self._add_row(_WAVE_H, viewbox=InteractiveViewBox())
         self._wave_plot.hideAxis("bottom")
         self._owner_vb = self._wave_plot.getViewBox()
         self._wire_vb(self._owner_vb)
         self.waveform = WaveformLane(self._wave_plot, theme)
 
-        self._spec_plot = self._add_row("Spectrogram", _SPEC_H, viewbox=InteractiveViewBox())
+        self._spec_plot = self._add_row(_SPEC_H, viewbox=InteractiveViewBox())
         self._spec_plot.hideAxis("bottom")
         self._hist = pg.HistogramLUTItem()
-        self._glw.addItem(self._hist, row=self._row - 1, col=2)
+        # Cap the histogram to the spectrogram row height; otherwise its natural height inflates the
+        # whole row and the label lanes drift out of step with the (fixed-height) header column.
+        self._hist.setMaximumHeight(_SPEC_H)
+        self._glw.addItem(self._hist, row=self._row - 1, col=1)
         self.spectrogram = SpectrogramLane(self._spec_plot, self._hist, theme)
 
         for plot in (self._ruler, self._spec_plot):
@@ -180,19 +201,14 @@ class AudioEditor(QWidget):
         self._play_timer.timeout.connect(self._update_playhead)
 
     # ---- layout ----
-    def _add_row(
-        self, name: str, height: int, axis: dict | None = None, viewbox=None
-    ) -> pg.PlotItem:
-        """Add a row: a horizontal name label in col 0 and the plot (no left axis) in col 1."""
-        label = pg.LabelItem(name, justify="left", size="9pt", color=self._theme.color("text-sec"))
-        self._glw.addItem(label, row=self._row, col=0)
-        plot = self._glw.addPlot(row=self._row, col=1, axisItems=axis or {}, viewBox=viewbox)
+    def _add_row(self, height: int, axis: dict | None = None, viewbox=None) -> pg.PlotItem:
+        """Add a fixed-height plot row in col 0 (the track name lives in the header column)."""
+        plot = self._glw.addPlot(row=self._row, col=0, axisItems=axis or {}, viewBox=viewbox)
         self._row += 1
         plot.setMinimumHeight(height)
         plot.setMaximumHeight(height)
-        plot.hideAxis("left")  # no y scale on any lane; the name lives in col 0
+        plot.hideAxis("left")  # no y scale on any lane
         plot.getViewBox().setMenuEnabled(False)
-        plot._name_label = label  # keep a handle so label lanes can be torn down with their label
         return plot
 
     def _wire_vb(self, vb: InteractiveViewBox) -> None:
@@ -254,6 +270,11 @@ class AudioEditor(QWidget):
 
     def set_amplitude_scale(self, gain: float) -> None:
         self.waveform.set_gain(gain)
+
+    def _nudge_amp(self, factor: float) -> None:
+        """Step the waveform amplitude (the header ＋/－ buttons), clamped to 0.1x..10x."""
+        self._amp_scale = max(0.1, min(10.0, self._amp_scale * factor))
+        self.set_amplitude_scale(self._amp_scale)
 
     def zoom(self, factor: float) -> None:
         """Zoom the time axis about the view centre (factor < 1 zooms in)."""
@@ -351,30 +372,22 @@ class AudioEditor(QWidget):
 
     def add_label_lane(self, name: str, editable: bool = False) -> LabelLane:
         display = _LANE_DISPLAY.get(name, name)
-        lane_row = self._row
-        plot = self._add_row(
-            display + (" ✎" if editable else ""), LABEL_LANE_HEIGHT, viewbox=InteractiveViewBox()
-        )
+        plot = self._add_row(LABEL_LANE_HEIGHT, viewbox=InteractiveViewBox())
         plot.hideAxis("bottom")
         plot.setXLink(self._wave_plot)
-        # Leave a gap below the lane and let the lane draw outside its rect, so a too-short label's
-        # text can be tucked into that gap (below the track) instead of overlapping the band.
-        self._glw.ci.layout.setRowSpacing(lane_row, _LANE_GAP)
-        vb = plot.getViewBox()
-        vb.setFlag(QGraphicsItem.GraphicsItemFlag.ItemClipsChildrenToShape, False)
-        vb.childGroup.setFlag(QGraphicsItem.GraphicsItemFlag.ItemClipsChildrenToShape, False)
-        self._wire_vb(vb)
+        self._wire_vb(plot.getViewBox())
+        self._header.add_lane(display, LABEL_LANE_HEIGHT, editable)  # left header row
         lane = LabelLane(plot, name, self._theme, editable=editable)
         lane.label_selected.connect(lambda iv, ln=lane: self._on_label_selected(ln, iv))
         if editable:
             lane.tier_changed.connect(self._record_history)
         self._label_lanes.append(lane)
         self._lane_plots.append(plot)
-        self._lane_labels.append(plot._name_label)
         self._add_mirror_region(plot)
         self._add_cursor_line(plot)
         if editable and self._focus_lane is None:
             self._focus_lane = lane
+        self._sync_header_focus()
         return lane
 
     def clear_tiers(self) -> None:
@@ -382,11 +395,9 @@ class AudioEditor(QWidget):
         self.set_selection(None)
         for plot in self._lane_plots:
             self._glw.removeItem(plot)
-        for label in self._lane_labels:
-            self._glw.removeItem(label)
+        self._header.clear_lanes()
         self._label_lanes = []
         self._lane_plots = []
-        self._lane_labels = []
         self._focus_lane = None
         self._active_lane = None
         self._trial_index = None
@@ -432,13 +443,14 @@ class AudioEditor(QWidget):
 
     def set_theme(self, theme: Theme) -> None:
         self._theme = theme
-        self._glw.setBackground(theme.color("panel"))  # the track-name column / surrounds
+        self._glw.setBackground(theme.color("lane-bg"))  # the plot column surface
+        self._header.apply_theme(theme)
+        self._toolbar.set_theme_name(theme.name)
         self.waveform.apply_theme(theme)
         self.spectrogram.apply_theme(theme)
         for lane in self._label_lanes:
             lane.apply_theme(theme)
         self._restyle_overlays()
-        self._recolor_row_labels()
 
     def _restyle_overlays(self) -> None:
         accent = self._theme.color("accent")
@@ -451,12 +463,6 @@ class AudioEditor(QWidget):
         dashed = pg.mkPen(accent, width=1, style=Qt.PenStyle.DashLine)
         for line in (self._cursor_master, *self._cursor_lines):
             line.setPen(dashed)
-
-    def _recolor_row_labels(self) -> None:
-        color = self._theme.color("text-sec")
-        plots = (self._ruler, self._wave_plot, self._spec_plot)
-        for label in [p._name_label for p in plots] + self._lane_labels:
-            label.setText(label.text, color=color, size="9pt", justify="left")
 
     def load(self, wav_path, cache_dir=None) -> None:
         self._player.stop()  # don't keep playing a previous file
@@ -563,6 +569,13 @@ class AudioEditor(QWidget):
             if other is not lane:
                 other.select(-1)
         self._active_lane = lane
+        self._sync_header_focus()
+
+    def _sync_header_focus(self) -> None:
+        """Highlight the header row of the active (or default editable) lane."""
+        lane = self._active_lane or self._focus_lane
+        idx = self._label_lanes.index(lane) if lane in self._label_lanes else -1
+        self._header.set_focus(idx)
 
     def _on_scene_click(self, ev) -> None:
         if ev.button() != Qt.MouseButton.LeftButton:

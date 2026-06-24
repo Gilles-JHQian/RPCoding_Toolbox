@@ -12,7 +12,7 @@ from PySide6.QtCore import QPointF, Qt
 
 from rpcoding.gui.editor import AudioEditor
 from rpcoding.gui.editor.interactive_viewbox import InteractiveViewBox
-from rpcoding.gui.editor.track_container import _RULER_H, _WAVE_H
+from rpcoding.gui.editor.track_container import _RULER_H, _SPEC_H, _WAVE_H
 from rpcoding.gui.theme import DARK_THEME, LIGHT_THEME
 
 
@@ -91,6 +91,41 @@ def test_add_label_lane(qtbot):
     assert lane.plot.getViewBox().linkedView(0) is ed._wave_plot.getViewBox()
 
 
+def test_header_column_tracks_tiers(qtbot):
+    from rpcoding.core.labels import Tier
+
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers(
+        [("cue_events", Tier("cue_events", []), False), ("response", Tier("response", []), True)]
+    )
+    assert len(ed._header._lane_rows) == 2  # one header row per lane, kept in step with the plots
+    ed.set_tiers([("response", Tier("response", []), True)])
+    assert len(ed._header._lane_rows) == 1  # rebuilt, never stacked
+
+
+def test_header_focus_follows_selection(qtbot):
+    from rpcoding.core.labels import Interval, Tier
+
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers(
+        [
+            ("cue_events", Tier("cue_events", [Interval(1, 2, "a")]), False),
+            ("response", Tier("response", [Interval(1, 2, "b")]), True),
+        ]
+    )
+    ed._select_only(ed._label_lanes[0])
+    assert [bool(r.property("focused")) for r in ed._header._lane_rows] == [True, False]
+
+
+def test_histogram_capped_to_spec_row(qtbot):
+    # The histogram must not inflate the spectrogram row, or the lanes drift off the header column.
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    assert ed._hist.maximumHeight() == _SPEC_H
+
+
 def test_set_theme_does_not_raise(qtbot):
     ed = AudioEditor(DARK_THEME)
     qtbot.addWidget(ed)
@@ -106,7 +141,7 @@ def test_theme_switch_updates_background(qtbot):
     dark_bg = ed._glw.backgroundBrush().color().name().lower()
     ed.set_theme(LIGHT_THEME)
     light_bg = ed._glw.backgroundBrush().color().name().lower()
-    assert dark_bg != light_bg and light_bg == "#ffffff"  # light panel
+    assert dark_bg != light_bg and light_bg == "#f3f5f9"  # light lane-bg (plot surface)
 
 
 def test_all_lanes_interactive(qtbot):

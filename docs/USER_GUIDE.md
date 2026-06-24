@@ -63,9 +63,10 @@ steps are skipped. Manual steps and the optional denoise step are not run by bat
 
 ## 5. Annotation editor
 
-Opened from a manual step. Both manual steps share one layout: a shared time axis with a **waveform**
-lane, a **spectrogram** lane, and four label tracks — **first stim · condition · cue · response** —
-plus a **Trial Info** panel. Only the editable track differs by step:
+Opened from a manual step. The window has three columns: a **left header column** with each track's
+name and controls, the **plot column** (a shared time axis with a **waveform** lane, a **spectrogram**
+lane, and four label tracks — **first stim · condition · cue · response**), and a right **Trial Info**
+panel. Only the editable track differs by step:
 
 - **Mark first stimuli**: the `first stim` track is editable (the rest are read-only reference).
 - **Response coding**: the `response` track is editable; it starts from your saved coding, else the
@@ -88,12 +89,14 @@ span is highlighted on the waveform and spectrogram above.
 **Playback:** **Space** (or the **▶ Play** button) plays the audio — if a selection/label is active it
 plays that span; otherwise if a cursor is set it plays from there to the end; otherwise the whole
 file. Space (or the button) again stops. The **cursor follows playback** (the view auto-scrolls to
-keep it in view) and is left where you stopped, so Space resumes from there. The **Vol** slider sets
-the playback volume (up to 10× for quiet recordings; separate from **Amp**, which only scales the
-waveform's on-screen height).
+keep it in view) and is left where you stopped, so Space resumes from there. Clicking the timeline
+**while playing seeks** — playback continues from where you click. The **Vol** slider (toolbar) sets
+the playback volume (up to 10× for quiet recordings); the **amp ＋/－** buttons in the waveform's
+header scale only the waveform's on-screen height.
 
-The editor follows the **light/dark theme** (toggle on the dashboard). When the time axis is zoomed
-so a label is narrower than its text, the text drops just below the label so it stays readable.
+The editor follows the **light/dark theme** — toggle it from the dashboard or the **◑** button in the
+editor toolbar. When the time axis is zoomed so a label is narrower than its text, the text truncates
+with **…** inside the chip; **hover the label** to see its full text.
 
 ### Keyboard / mouse
 

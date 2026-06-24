@@ -153,9 +153,14 @@ after), <15 ms reslice at any zoom.
 
 ## 7. The annotation editor
 
-[editor/track_container.py](../src/rpcoding/gui/editor/track_container.py) (`AudioEditor`) stacks a
-time ruler, waveform, spectrogram and N label lanes in a `GraphicsLayoutWidget`: col 0 = horizontal
-track-name labels, col 1 = the plots (no left axis). It opens as a **separate top-level window**.
+[editor/track_container.py](../src/rpcoding/gui/editor/track_container.py) (`AudioEditor`) follows the
+`02 Annotation Editor` design prototype: a three-column body of a **170px header column**
+([editor/header_column.py](../src/rpcoding/gui/editor/header_column.py): per-track name/sub-label, the
+waveform amp ＋/－, a focus rail), a **plot column** (a `GraphicsLayoutWidget` stacking a time ruler,
+waveform, spectrogram and N label lanes — col 0 = plots, col 1 = the spectrogram histogram), and a
+**Trial Info** panel. The header column's fixed-height rows are kept pixel-aligned with the plot rows
+(identical heights, zero layout spacing, a reserved bottom-stretch row, and a height-capped histogram
+so it can't inflate its row). It opens as a **separate top-level window**.
 Both manual steps use one unified lane layout (first stim · condition · cue · response;
 [editor_loader.py](../src/rpcoding/gui/editor_loader.py)), toggling only the editable lane. The
 waveform amplitude auto-scales to a robust percentile of the per-bin peak (so click transients don't
@@ -177,11 +182,12 @@ cleaner view. The toolbar selection readout is editable (type a precise start/en
   cursor → `select_at`). The selected label becomes draggable (body + endpoints; unselected labels
   stay non-movable so clicks reach the lane), **Enter** renames it, an error-palette code appends to
   it, **Delete** removes it, and its span highlights across all lanes.
-- **Theming & label rendering:** the editor fully re-themes via `set_theme` (the `GraphicsLayoutWidget`
-  background, each lane viewbox, the track-name labels, and the selection/cursor overlays) using the
-  light/dark design tokens. Labels render as chips (`label-bg`/`label-border`/`label-text`); the
-  response lane is tinted (`response-bg`). When a label's on-screen width is narrower than its text,
-  the text is positioned just below the label instead of centred.
+- **Theming & label rendering:** the editor fully re-themes via `set_theme` (the plot-column
+  background, the header column, the toolbar's theme button, each lane viewbox, and the
+  selection/cursor overlays) using the light/dark design tokens. Labels render as flush chips
+  (`label-bg`/`label-border`/`label-text`); the response lane is tinted (`response-bg`). A chip too
+  narrow for its text shows left-aligned text **truncated with `…`** and the full label in a hover
+  **tooltip** (matching the prototype's `overflow:hidden` chips).
 - **Clipboard & undo/redo:** Ctrl+C/X/V copy/cut/paste a label (paste at the cursor/selection,
   preserving length); Ctrl+Z/Y undo/redo via a snapshot history of the editable tier (recorded on
   each `tier_changed`). The selection span is a movable `LinearRegionItem` (drag body = move, edge =

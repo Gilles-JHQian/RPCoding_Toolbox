@@ -1,4 +1,8 @@
-"""Editor toolbar: amplitude scale, plus a non-modal build-progress strip."""
+"""Editor toolbar: transport, label ops, selection readout, playback volume, theme toggle.
+
+Amplitude lives in the waveform header now (＋/－); this bar keeps the playback volume slider plus a
+non-modal build-progress strip.
+"""
 
 from __future__ import annotations
 
@@ -16,13 +20,16 @@ from PySide6.QtWidgets import (
 
 
 class EditorToolbar(QFrame):
-    amplitude_changed = Signal(float)  # gain multiplier
     save_requested = Signal()
     back_requested = Signal()
     zoom_in_requested = Signal()
     zoom_out_requested = Signal()
     fit_requested = Signal()
     play_requested = Signal()
+    add_label_requested = Signal()
+    copy_requested = Signal()
+    paste_requested = Signal()
+    theme_toggle_requested = Signal()
     volume_changed = Signal(float)  # playback output gain
     selection_edited = Signal(float, float)  # start, end (seconds) typed into the readout
 
@@ -30,7 +37,7 @@ class EditorToolbar(QFrame):
         super().__init__(parent)
         self.setObjectName("TopBar")
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(8, 4, 8, 4)
+        lay.setContentsMargins(10, 4, 10, 4)
         lay.setSpacing(6)
 
         self._back = QPushButton("← Back")
@@ -42,6 +49,7 @@ class EditorToolbar(QFrame):
         self._play.clicked.connect(self.play_requested.emit)
         lay.addWidget(self._play)
 
+        lay.addWidget(self._sep())
         for glyph, tip, sig in (
             ("🔍＋", "Zoom in", self.zoom_in_requested),
             ("🔍－", "Zoom out", self.zoom_out_requested),
@@ -52,14 +60,35 @@ class EditorToolbar(QFrame):
             btn.clicked.connect(sig.emit)
             lay.addWidget(btn)
 
-        lay.addWidget(QLabel("Amp"))
-        self._amp = QSlider(Qt.Orientation.Horizontal)
-        self._amp.setRange(10, 1000)  # 0.1x .. 10x (waveform display height)
-        self._amp.setValue(100)
-        self._amp.setFixedWidth(110)
-        self._amp.valueChanged.connect(lambda v: self.amplitude_changed.emit(v / 100.0))
-        lay.addWidget(self._amp)
+        lay.addWidget(self._sep())
+        self._add = QPushButton("＋ Label")
+        self._add.setObjectName("Accent")
+        self._add.setToolTip("Create label from selection (Ctrl+B)")
+        self._add.clicked.connect(self.add_label_requested.emit)
+        lay.addWidget(self._add)
+        for text, tip, sig in (
+            ("Copy", "Copy label (Ctrl+C)", self.copy_requested),
+            ("Paste", "Paste label (Ctrl+V)", self.paste_requested),
+        ):
+            btn = QPushButton(text)
+            btn.setToolTip(tip)
+            btn.clicked.connect(sig.emit)
+            lay.addWidget(btn)
 
+        lay.addStretch(1)
+
+        # Editable selection readout: click a field to type a precise start / end (seconds).
+        lay.addWidget(QLabel("sel"))
+        self._sel_start = self._make_time_field("start")
+        lay.addWidget(self._sel_start)
+        lay.addWidget(QLabel("–"))
+        self._sel_end = self._make_time_field("end")
+        lay.addWidget(self._sel_end)
+        self._sel_dur = QLabel("")
+        self._sel_dur.setObjectName("Meta")
+        lay.addWidget(self._sel_dur)
+
+        lay.addWidget(self._sep())
         lay.addWidget(QLabel("Vol"))
         self._vol = QSlider(Qt.Orientation.Horizontal)
         self._vol.setRange(0, 1000)  # 0x .. 10x playback gain (quiet recordings need a lot)
@@ -73,32 +102,22 @@ class EditorToolbar(QFrame):
         self._vol_val.setFixedWidth(34)
         lay.addWidget(self._vol_val)
 
-        # Editable selection readout: click a field to type a precise start / end (seconds).
-        lay.addWidget(QLabel("sel"))
-        self._sel_start = self._make_time_field("start")
-        lay.addWidget(self._sel_start)
-        lay.addWidget(QLabel("–"))
-        self._sel_end = self._make_time_field("end")
-        lay.addWidget(self._sel_end)
-        self._sel_dur = QLabel("")
-        self._sel_dur.setObjectName("Meta")
-        lay.addWidget(self._sel_dur)
-
-        lay.addStretch(1)
-        self._hint = QLabel("drag to select · Ctrl+B to label")
-        self._hint.setObjectName("Meta")
-        lay.addWidget(self._hint)
-
-        self._save = QPushButton("💾 Save (Ctrl+S)")
+        self._save = QPushButton("💾 Save")
         self._save.setObjectName("Primary")
+        self._save.setToolTip("Save labels (Ctrl+S)")
         self._save.clicked.connect(self.save_requested.emit)
         lay.addWidget(self._save)
+
+        self._theme = QPushButton("◑ Light")
+        self._theme.setToolTip("Toggle dark / light theme")
+        self._theme.clicked.connect(self.theme_toggle_requested.emit)
+        lay.addWidget(self._theme)
 
         self._status = QLabel("")
         self._status.setObjectName("Meta")
         lay.addWidget(self._status)
         self._bar = QProgressBar()
-        self._bar.setFixedWidth(160)
+        self._bar.setFixedWidth(150)
         self._bar.setRange(0, 100)
         self._bar.setVisible(False)
         lay.addWidget(self._bar)
@@ -106,8 +125,14 @@ class EditorToolbar(QFrame):
         # Mouse-only controls: don't take keyboard focus, so Tab stays with the editor (label nav).
         for w in self.findChildren(QPushButton):
             w.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._amp.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._vol.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+    def _sep(self) -> QFrame:
+        line = QFrame()
+        line.setObjectName("ToolSep")
+        line.setFrameShape(QFrame.Shape.VLine)
+        line.setFixedWidth(1)
+        return line
 
     def _make_time_field(self, placeholder: str) -> QLineEdit:
         field = QLineEdit()
@@ -142,6 +167,10 @@ class EditorToolbar(QFrame):
 
     def set_playing(self, playing: bool) -> None:
         self._play.setText("⏸ Stop" if playing else "▶ Play")
+
+    def set_theme_name(self, name: str) -> None:
+        """``name`` is the *current* theme; the button offers to switch to the other one."""
+        self._theme.setText("◑ Light" if name == "dark" else "◑ Dark")
 
     def _on_vol_changed(self, v: int) -> None:
         self.volume_changed.emit(v / 100.0)
