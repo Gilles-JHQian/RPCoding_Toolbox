@@ -15,6 +15,12 @@ from rpcoding.core.matio import load_mat
 WORD = "Word"
 NONWORD = "Nonword"
 
+# The lab's standard Lexical word/nonword lists, bundled (MATLAB `load`ed these from the
+# response_coding_dep path). Used as the default when the user hasn't set their own lists.
+_BUNDLED_DIR = Path(__file__).parent / "rpcode" / "wordlists"
+DEFAULT_WORD_LIST = _BUNDLED_DIR / "word_lst.mat"
+DEFAULT_NONWORD_LIST = _BUNDLED_DIR / "nonword_lst.mat"
+
 
 def _flatten(value) -> list:
     if isinstance(value, str):

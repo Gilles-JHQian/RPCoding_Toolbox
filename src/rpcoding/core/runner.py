@@ -22,7 +22,7 @@ from rpcoding.core.session import SubjectSession
 from rpcoding.core.steps import STEP_SPECS, EffectiveState, Step, StepKind
 from rpcoding.core.tasks import Task
 from rpcoding.core.trialinfo.build import build_trialinfo
-from rpcoding.core.wordlists import load_name_list
+from rpcoding.core.wordlists import DEFAULT_NONWORD_LIST, DEFAULT_WORD_LIST, load_name_list
 
 StepAction = Callable[[SubjectSession], None]
 
@@ -82,12 +82,12 @@ def _run_mfa(s: SubjectSession) -> None:
 
 
 def _write_trials(s: SubjectSession) -> None:
-    if s.config.word_list is None or s.config.nonword_list is None:
-        raise ValueError(
-            "Word/nonword lists are not configured; set them in settings before writing Trials"
-        )
-    words = set(load_name_list(s.config.word_list, "words"))
-    nonwords = set(load_name_list(s.config.nonword_list, "nonwords"))
+    # Mirror MATLAB, which `load`ed fixed word_lst/nonword_lst from the path: default to the bundled
+    # lab lists when the user hasn't set their own (so the step works without manual configuration).
+    word_list = s.config.word_list or DEFAULT_WORD_LIST
+    nonword_list = s.config.nonword_list or DEFAULT_NONWORD_LIST
+    words = set(load_name_list(word_list, "words"))
+    nonwords = set(load_name_list(nonword_list, "nonwords"))
     trialinfo = load_trialinfo(s.output_path(paths.TRIALINFO_MAT))
     trials_mat = find_trials_mat(s.d_data_subject_dir)
     generate_trials(s.results_dir, trials_mat, trialinfo, words, nonwords, task=s.task)

@@ -33,6 +33,8 @@ Thumbs.db
 *.wav
 *.mat
 !tests/fixtures/**/*.mat
+# bundled lab word/nonword lists (vendored reference data, must be tracked)
+!src/rpcoding/core/rpcode/wordlists/*.mat
 
 # MFA output dirs (mfa/, input_mfa*/, output_mfa*/) live in the external subject data tree,
 # not in this repo, so they are not ignored here (a broad `mfa/` would wrongly hide the

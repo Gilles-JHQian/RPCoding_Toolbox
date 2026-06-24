@@ -29,6 +29,26 @@ def test_theme_qss_and_state_colors():
     assert LIGHT_THEME.state_color(EffectiveState.ERROR) == "#d23b32"
 
 
+def test_excepthook_shows_dialog_instead_of_crashing(monkeypatch):
+    import sys
+
+    import rpcoding.gui.error_dialog as ed
+
+    shown: list = []
+    monkeypatch.setattr(ed, "show_error", lambda *a, **k: shown.append((a, k)))
+    old = sys.excepthook
+    try:
+        ed.install_excepthook()
+        try:
+            raise ValueError("boom-xyz")
+        except ValueError:
+            sys.excepthook(*sys.exc_info())  # what PySide6 calls on an uncaught slot exception
+        # the hook surfaced a dialog (with the traceback) and did NOT re-raise / abort
+        assert shown and "boom-xyz" in shown[0][0][1]
+    finally:
+        sys.excepthook = old
+
+
 def test_worker_emits_result():
     got: list = []
     w = Worker(lambda x: x * 2, 21)
