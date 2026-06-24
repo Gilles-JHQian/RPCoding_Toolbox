@@ -110,6 +110,7 @@ class AudioEditor(QWidget):
         self._toolbar.fit_requested.connect(self.fit)
         self._toolbar.selection_edited.connect(self._on_selection_edited)
         self._toolbar.play_requested.connect(self._toggle_play)
+        self._toolbar.volume_changed.connect(self._on_volume_changed)
         outer.addWidget(self._toolbar)
 
         body = QHBoxLayout()
@@ -169,13 +170,9 @@ class AudioEditor(QWidget):
         self._pyramid_ready.connect(self._on_pyramid)
         self._spectro_ready.connect(self._on_spectro)
 
-        # playback: a player + a moving playhead on the audio lanes, polled by a UI-thread timer.
+        # playback: the cursor doubles as the playhead, advanced by a UI-thread timer.
         self._player = AudioPlayer(self)
         self._player.finished.connect(self._on_playback_finished)
-        self._playhead_lines = [
-            self._make_playhead_line(self._wave_plot),
-            self._make_playhead_line(self._spec_plot),
-        ]
         self._play_timer = QTimer(self)
         self._play_timer.setInterval(30)
         self._play_timer.timeout.connect(self._update_playhead)
@@ -231,13 +228,6 @@ class AudioEditor(QWidget):
 
     def _add_cursor_line(self, plot: pg.PlotItem) -> None:
         self._cursor_lines.append(self._make_cursor_line(plot))
-
-    def _make_playhead_line(self, plot: pg.PlotItem) -> pg.InfiniteLine:
-        line = pg.InfiniteLine(angle=90, movable=False, pen=pg.mkPen("#46c7d6", width=2))
-        line.setZValue(7)
-        line.hide()
-        plot.addItem(line)
-        return line
 
     def set_cursor(self, x: float | None) -> None:
         """Show a vertical cursor at time ``x`` across all lanes (None hides it)."""
@@ -325,7 +315,7 @@ class AudioEditor(QWidget):
 
     def _toggle_play(self) -> None:
         if self._player.is_playing():
-            self._player.stop()  # -> finished -> _on_playback_finished resets the UI
+            self._player.stop()  # -> finished -> the cursor is left at the stop position
             return
         if self._wav_path is None or not self._wav_path.exists():
             return
@@ -333,21 +323,29 @@ class AudioEditor(QWidget):
         self._player.play(self._wav_path, start, end)
         if self._player.is_playing():
             self._toolbar.set_playing(True)
-            for line in self._playhead_lines:
-                line.setPos(start)
-                line.show()
+            self.set_cursor(start)  # the cursor doubles as the playhead
             self._play_timer.start()
 
     def _update_playhead(self) -> None:
         pos = self._player.position()
-        for line in self._playhead_lines:
-            line.setPos(pos)
+        self.set_cursor(pos)  # the cursor tracks playback progress
+        self._follow(pos)
+
+    def _follow(self, pos: float) -> None:
+        """Page the view forward so the playhead stays visible during playback."""
+        t0, t1 = self.visible_range()
+        width = t1 - t0
+        if width > 0 and (pos > t1 - 0.02 * width or pos < t0):
+            lo = max(pos - 0.1 * width, 0.0)
+            self.set_visible_range(lo, lo + width)
 
     def _on_playback_finished(self) -> None:
         self._play_timer.stop()
-        for line in self._playhead_lines:
-            line.hide()
+        self.set_cursor(self._player.position())  # leave the cursor exactly where playback stopped
         self._toolbar.set_playing(False)
+
+    def _on_volume_changed(self, volume: float) -> None:
+        self._player.set_volume(volume)
 
     def add_label_lane(self, name: str, editable: bool = False) -> LabelLane:
         display = _LANE_DISPLAY.get(name, name)

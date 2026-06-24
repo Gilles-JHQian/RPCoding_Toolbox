@@ -84,10 +84,14 @@ in development); entries are grouped by the feature branch that delivered them, 
   **editable** (type a precise start/end in seconds). The waveform is shorter and the spectrogram
   taller; the waveform amplitude **auto-scales** to a robust percentile of the signal (ignoring click
   transients), and the spectrogram's default dB window is raised for a cleaner, less-bright view.
-- **Audio playback** (`feat/editor-playback`): **Space** / the **▶ Play** button plays the audio with
-  a moving playhead — a selection plays that span, else a cursor plays from there to the end, else the
-  whole file; Space again stops. Streams from the wav via sounddevice (any range, no RAM blow-up) and
-  stops on close. Gracefully a no-op when there's no audio backend.
+- **Audio playback** (`feat/editor-playback`): **Space** / the **▶ Play** button plays the audio;
+  a selection plays that span, else a cursor plays from there to the end, else the whole file; Space
+  again stops. Streams from the wav via sounddevice (any range, no RAM blow-up) and stops on close.
+  Gracefully a no-op when there's no audio backend.
+- **Playback controls** (`feat/editor-playback-controls`): a **Vol** slider sets the playback gain
+  (independent of the waveform display amplitude). The **cursor doubles as the playhead** — it tracks
+  playback, the view auto-scrolls to keep it visible, and on stop the cursor is left exactly where
+  playback paused (so Space resumes from there).
 
 ### Data compatibility
 

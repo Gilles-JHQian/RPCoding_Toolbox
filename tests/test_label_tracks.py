@@ -204,6 +204,27 @@ def test_toggle_play_without_audio_is_noop(qtbot):
     assert not ed._player.is_playing()
 
 
+def test_volume_sets_player_gain(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed._on_volume_changed(1.5)
+    assert ed._player._volume == 1.5
+
+
+def test_playhead_tracks_cursor_and_lands_on_stop(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", []), True)])
+    # pretend the player has reached 3.0 s, then a timer tick / finish updates the cursor
+    ed._player._fs = 100
+    ed._player._start_frame = 0
+    ed._player._frames_done = 300
+    ed._update_playhead()
+    assert ed._cursor_master.value() == 3.0
+    ed._on_playback_finished()
+    assert ed._cursor_master.value() == 3.0  # cursor left exactly where playback stopped
+
+
 def test_editable_selection_readout(qtbot):
     ed = AudioEditor(DARK_THEME)
     qtbot.addWidget(ed)

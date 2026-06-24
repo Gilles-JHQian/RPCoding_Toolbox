@@ -85,9 +85,11 @@ adjust (the highlight follows live), press **Enter** to rename, or click an **er
 lands at the cursor, keeping its length), and **Ctrl+Z / Ctrl+Y** undo / redo. The selected label's
 span is highlighted on the waveform and spectrogram above.
 
-**Playback:** **Space** (or the **▶ Play** button) plays the audio with a moving playhead — if a
-selection/label is active it plays that span; otherwise if a cursor is set it plays from there to the
-end; otherwise it plays the whole file. Space (or the button) again stops.
+**Playback:** **Space** (or the **▶ Play** button) plays the audio — if a selection/label is active it
+plays that span; otherwise if a cursor is set it plays from there to the end; otherwise the whole
+file. Space (or the button) again stops. The **cursor follows playback** (the view auto-scrolls to
+keep it in view) and is left where you stopped, so Space resumes from there. The **Vol** slider sets
+the playback volume (separate from **Amp**, which only scales the waveform's on-screen height).
 
 ### Keyboard / mouse
 
