@@ -28,6 +28,14 @@ MATLAB + Audacity + MFA results.
 
 Settings are saved immediately and applied to the currently selected subject.
 
+**Montreal Forced Aligner** — the Settings dialog shows an MFA section that checks your install:
+the `mfa` engine, the acoustic model, the base + custom dictionaries, and the `noisereduce` denoise
+dependency, each marked ✓ or ✗. If anything is missing, click **Download & install models** — it
+pip-installs any missing pipeline deps, downloads the acoustic model + dictionaries (~100 MB,
+one-time), and installs the lab's custom dictionaries; **Re-check** re-probes. This is the one-click
+equivalent of `python -m rpcoding.core.mfa.models --ensure-models`. MFA must be complete (all ✓)
+before the **MFA forced alignment** step will run.
+
 ## 3. Dashboard
 
 1. Pick a **Task** (top-left). The **◑** button toggles the light/dark theme.

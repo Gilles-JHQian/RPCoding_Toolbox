@@ -1,7 +1,8 @@
-"""Settings dialog: edit the data root, word/nonword lists, and the per-task MFA config map.
+"""Settings dialog: data root, word/nonword lists, per-task MFA config map, and MFA setup.
 
 Builds a new :class:`AppConfig` from the form on accept (``result_config``); the caller persists it
-and refreshes any open sessions.
+and refreshes any open sessions. The MFA section probes the install (engine / model / dictionaries /
+denoise dep) and offers a one-click download+install that runs off the UI thread.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -22,7 +24,11 @@ from PySide6.QtWidgets import (
 )
 
 from rpcoding.core.config import AppConfig
+from rpcoding.core.mfa.models import ensure_mfa_setup, mfa_status
+from rpcoding.core.steps import EffectiveState
 from rpcoding.core.tasks import Task
+from rpcoding.gui.theme import DARK_THEME, Theme
+from rpcoding.gui.workers.worker import run_in_thread
 
 
 class _PathField(QWidget):
@@ -55,10 +61,12 @@ class _PathField(QWidget):
 
 
 class SettingsDialog(QDialog):
-    def __init__(self, config: AppConfig, parent=None):
+    def __init__(self, config: AppConfig, theme: Theme | None = None, parent=None):
         super().__init__(parent)
+        self._theme = theme or DARK_THEME
+        self._install_err: str | None = None
         self.setWindowTitle("Settings")
-        self.resize(560, 320)
+        self.resize(560, 520)
 
         outer = QVBoxLayout(self)
         form = QFormLayout()
@@ -91,12 +99,95 @@ class SettingsDialog(QDialog):
             self._mfa[task.value] = edit
             mfa_form.addRow(task.value, edit)
 
-        buttons = QDialogButtonBox(
+        outer.addWidget(self._build_mfa_group())
+
+        self._buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
-        outer.addWidget(buttons)
+        self._buttons.accepted.connect(self.accept)
+        self._buttons.rejected.connect(self.reject)
+        outer.addWidget(self._buttons)
+
+        self._render_mfa_status()
+
+    # ---- MFA setup section ----
+    def _build_mfa_group(self) -> QGroupBox:
+        group = QGroupBox("Montreal Forced Aligner")
+        gl = QVBoxLayout(group)
+        self._mfa_status_box = QWidget()
+        self._mfa_status_lay = QVBoxLayout(self._mfa_status_box)
+        self._mfa_status_lay.setContentsMargins(0, 0, 0, 0)
+        self._mfa_status_lay.setSpacing(3)
+        gl.addWidget(self._mfa_status_box)
+
+        row = QHBoxLayout()
+        self._mfa_install_btn = QPushButton("Download & install models")
+        self._mfa_install_btn.clicked.connect(self._install_mfa)
+        self._mfa_recheck_btn = QPushButton("Re-check")
+        self._mfa_recheck_btn.clicked.connect(self._render_mfa_status)
+        row.addWidget(self._mfa_install_btn)
+        row.addWidget(self._mfa_recheck_btn)
+        row.addStretch(1)
+        gl.addLayout(row)
+
+        self._mfa_status_line = QLabel("")
+        self._mfa_status_line.setObjectName("Secondary")
+        self._mfa_status_line.setWordWrap(True)
+        gl.addWidget(self._mfa_status_line)
+        return group
+
+    def _render_mfa_status(self):
+        while self._mfa_status_lay.count():
+            item = self._mfa_status_lay.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.deleteLater()
+        status = mfa_status()
+        ok_c = self._theme.state_color(EffectiveState.DONE)
+        bad_c = self._theme.state_color(EffectiveState.ERROR)
+        ter = self._theme.color("text-ter")
+        for c in status.checks:
+            glyph, col = ("✓", ok_c) if c.ok else ("✗", bad_c)
+            lbl = QLabel(
+                f'<span style="color:{col};">{glyph}</span> {c.label} '
+                f'<span style="color:{ter};">— {c.detail}</span>'
+            )
+            self._mfa_status_lay.addWidget(lbl)
+        self._mfa_install_btn.setText(
+            "Re-install / repair" if status.complete else "Download & install models"
+        )
+        return status
+
+    def _install_mfa(self) -> None:
+        # Disable everything while the (multi-minute, network) install runs off the UI thread, so
+        # the dialog can't be closed out from under the worker's completion callback.
+        for w in (self._mfa_install_btn, self._mfa_recheck_btn, self._buttons):
+            w.setEnabled(False)
+        self._install_err = None
+        self._mfa_status_line.setText(
+            "Installing… downloading the acoustic model + dictionaries (~100 MB). "
+            "This can take a few minutes."
+        )
+        run_in_thread(
+            self,
+            ensure_mfa_setup,
+            on_error=self._on_install_error,
+            on_finished=self._on_install_done,
+        )
+
+    def _on_install_error(self, message: str) -> None:
+        self._install_err = message
+
+    def _on_install_done(self) -> None:
+        for w in (self._mfa_install_btn, self._mfa_recheck_btn, self._buttons):
+            w.setEnabled(True)
+        status = self._render_mfa_status()
+        if self._install_err:
+            self._mfa_status_line.setText(f"Install failed: {self._install_err}")
+        elif status.complete:
+            self._mfa_status_line.setText("✓ MFA is ready.")
+        else:
+            self._mfa_status_line.setText("Some items are still missing — see the list above.")
 
     def result_config(self) -> AppConfig:
         """Build an :class:`AppConfig` from the current field values."""
