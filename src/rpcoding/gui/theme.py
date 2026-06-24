@@ -42,6 +42,7 @@ DARK: dict[str, str] = {
     "label-border": "#3a4250",
     "label-text": "#c4ccd9",
     "response-bg": "#14181f",
+    "danger": "#e5564d",
 }
 
 LIGHT: dict[str, str] = {
@@ -64,6 +65,7 @@ LIGHT: dict[str, str] = {
     "label-border": "#d3d8e0",
     "label-text": "#3a4250",
     "response-bg": "#fafbfd",
+    "danger": "#d23b32",
 }
 
 # EffectiveState -> (dark hue, light hue)
@@ -120,6 +122,17 @@ def qss(theme: Theme) -> str:
                     border-radius: 9px; }}
     QFrame#SidePanel {{ background: {p['panel']}; border: none;
                         border-right: 1px solid {p['border']}; }}
+    QFrame#TrialPanel {{ background: {p['panel']}; border: none;
+                         border-left: 1px solid {p['border']}; }}
+    QLabel#Caption {{ color: {p['text-ter']}; font-family: {MONO_FONT}; font-size: 10px;
+                      letter-spacing: 1px; }}
+    QLabel#Hint {{ color: {p['text-ter']}; font-size: 11px; }}
+    QLabel#FieldVal {{ color: {p['text-pri']}; }}
+    QLabel#ErrorVal {{ color: {p['danger']}; font-family: {MONO_FONT}; }}
+    QPushButton#Chip {{ background: {p['btn-bg']}; border: 1px solid {p['btn-border']};
+                        border-radius: 5px; color: {p['text-sec']}; font-family: {MONO_FONT};
+                        font-size: 10px; font-weight: 500; padding: 5px 7px; }}
+    QPushButton#Chip:hover {{ border-color: {p['accent']}; color: {p['text-pri']}; }}
     QFrame#TopBar {{ background: {p['toolbar']}; border: none;
                      border-bottom: 1px solid {p['border']}; }}
     QFrame#PanelHeader {{ background: {p['app-bg']}; border: none;
@@ -141,7 +154,12 @@ def qss(theme: Theme) -> str:
     QPushButton#Primary {{ background: {p['accent']}; border: none; color: #ffffff;
                            font-weight: 600; padding: 8px 16px; }}
     QPushButton#Primary:hover {{ background: {p['accent']}; }}
+    QPushButton#Accent {{ background: {p['accent-soft']}; border: 1px solid {p['accent']};
+                          color: {p['accent']}; font-weight: 600; }}
+    QPushButton#Accent:hover {{ background: {p['accent-soft']}; border-color: {p['accent']};
+                                color: {p['accent']}; }}
     QPushButton#Icon {{ padding: 7px 11px; }}
+    QFrame#ToolSep {{ background: {p['border']}; border: none; max-width: 1px; }}
 
     QComboBox, QLineEdit {{ background: {p['btn-bg']}; border: 1px solid {p['btn-border']};
                             border-radius: 7px; padding: 6px 11px; color: {p['text-pri']}; }}

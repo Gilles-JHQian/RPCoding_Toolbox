@@ -21,6 +21,7 @@ LABEL_LANE_HEIGHT = 46
 _MAX_RENDER = 120  # hard cap on region items rendered per lane (sampled beyond this)
 _TEXT_LIMIT = 80  # show interval text only when at most this many are rendered
 _CHAR_PX = 7.5  # rough mono glyph width, to decide if a label's text fits inside it
+_PAD_PX = 5.0  # left/right inset of the chip text (matches the prototype's padding:0 6px)
 
 
 class _PoolItem:
@@ -169,7 +170,7 @@ class LabelLane(QObject):
             # Movable only while selected (set in _bind), so plain clicks reach the lane to select.
             region = pg.LinearRegionItem(values=[0, 0], movable=False)
             region.setZValue(10)
-            text = pg.TextItem("", anchor=(0.5, 0.5), color=self._theme.color("label-text"))
+            text = pg.TextItem("", anchor=(0.0, 0.5), color=self._theme.color("label-text"))
             text.setZValue(20)  # text always above the label shape
             self.plot.addItem(region)
             self.plot.addItem(text)
@@ -192,22 +193,35 @@ class LabelLane(QObject):
         item.region.show()
         selected = idx == self._active
         self._style_region(item.region, selected=selected)
-        if show_text and iv.label:
-            item.text.setText(iv.label)
-            item.text.setColor(self._theme.color("text-pri" if selected else "label-text"))
-            item.text.setPos((iv.start + iv.end) / 2.0, self._text_y(iv.start, iv.end, iv.label))
-            item.text.show()
-        else:
-            item.text.hide()
+        self._apply_text(item, iv, selected, show_text)
 
-    def _text_y(self, start: float, end: float, label: str) -> float:
-        """0.5 (centred on the chip) if the text fits, else just below the lane (in the gap)."""
+    def _apply_text(self, item: _PoolItem, iv: Interval, selected: bool, show_text: bool) -> None:
+        """Inset, left-aligned chip text clipped to the chip width; the full label is in a tooltip.
+
+        Mirrors the prototype's ``overflow:hidden`` chips: a label too narrow for its text truncates
+        with ``…`` rather than spilling outside the lane, and hovering reveals the full string.
+        """
+        item.region.setToolTip(iv.label or "")
+        item.text.setToolTip(iv.label or "")
         t0, t1 = self._view
-        if t1 > t0 and self._px > 0:
-            label_px = (end - start) / (t1 - t0) * self._px
-            if label_px < len(label) * _CHAR_PX + 6:
-                return -0.22  # tuck the text into the gap below the track (clipping disabled)
-        return 0.5
+        span = t1 - t0
+        if not (show_text and iv.label and span > 0 and self._px > 0):
+            item.text.hide()
+            return
+        px_per_s = self._px / span
+        avail_px = (iv.end - iv.start) * px_per_s - 2 * _PAD_PX
+        max_chars = int(avail_px / _CHAR_PX) if avail_px > 0 else 0
+        if len(iv.label) <= max_chars:
+            disp = iv.label
+        elif max_chars >= 2:
+            disp = iv.label[: max_chars - 1] + "…"
+        else:
+            item.text.hide()  # too narrow even for one glyph — the tooltip still has the full text
+            return
+        item.text.setText(disp)
+        item.text.setColor(self._theme.color("text-pri" if selected else "label-text"))
+        item.text.setPos(iv.start + _PAD_PX / px_per_s, 0.5)
+        item.text.show()
 
     def _on_region_changing(self, item: _PoolItem) -> None:
         """Live during a drag: update the interval + cross-lane highlight (no tier_changed yet)."""
@@ -215,8 +229,9 @@ class LabelLane(QObject):
             return
         a, b = item.region.getRegion()
         old = self._intervals[item.idx]
-        self._intervals[item.idx] = Interval(min(a, b), max(a, b), old.label)
-        item.text.setPos((a + b) / 2.0, self._text_y(a, b, old.label))
+        iv = Interval(min(a, b), max(a, b), old.label)
+        self._intervals[item.idx] = iv
+        self._apply_text(item, iv, selected=item.idx == self._active, show_text=True)
         if item.idx == self._active:
             self._emit_active()  # highlight follows the drag in real time
 

@@ -105,6 +105,17 @@ in development); entries are grouped by the feature branch that delivered them, 
   chip shape (z-order). And clicking the timeline **while playing now seeks** — playback continues
   from the click point instead of the playhead overwriting it (the player tears the old stream down
   silently on a re-`play()` so the UI keeps its playing state).
+- **Editor rebuilt to the HTML prototype** (`feat/editor-html-redesign`): the editor now matches
+  `design/gui/.../02 Annotation Editor.dc.html`. A dedicated **170px header column** (panel) holds
+  each track's name + sub-label, the waveform **amp ＋/－** control, and a focus rail that follows the
+  selected lane; it is kept pixel-aligned with the pyqtgraph plot rows (identical fixed heights, zero
+  layout spacing, a reserved bottom-stretch row — and the spectrogram histogram is height-capped so it
+  can't inflate its row). The plot column is the `lane-bg` surface (ruler/waveform/spectrogram/lanes);
+  the toolbar gains **＋ Label** (accent), **Copy/Paste**, and a **◑ theme toggle**, keeps **Vol**, and
+  drops the amp slider (moved to the header). Label chips are **flush** (no inter-lane gaps): a chip
+  too narrow for its text truncates with `…` and the **full label shows on hover** (replacing the
+  earlier below-the-lane text). The Trial Info panel gains the **error-palette caption** and the
+  **labeling-conventions hint**, with the Error value in the danger color.
 
 ### Fixed (later)
 
