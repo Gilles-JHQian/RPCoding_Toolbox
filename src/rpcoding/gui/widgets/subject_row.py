@@ -22,13 +22,13 @@ class SubjectRow(QWidget):
         self._selected = False
 
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(13, 7, 14, 7)
-        lay.setSpacing(10)
+        lay.setContentsMargins(16, 9, 16, 9)
+        lay.setSpacing(11)
         self.check = QCheckBox()
         self.check.setChecked(True)
         lay.addWidget(self.check)
-        self._dot = QLabel("●")
-        self._dot.setFixedWidth(11)
+        self._dot = QLabel()
+        self._dot.setFixedSize(9, 9)  # a true 9px circle, filled with the state color
         lay.addWidget(self._dot)
         self._id = QLabel(subject)
         self._id.setObjectName("Mono")
@@ -56,7 +56,9 @@ class SubjectRow(QWidget):
         super().mousePressEvent(event)
 
     def _paint(self) -> None:
-        self._dot.setStyleSheet(f"color: {self._theme.state_color(self._state)}; font-size: 11px;")
+        self._dot.setStyleSheet(
+            f"background: {self._theme.state_color(self._state)}; border-radius: 5px;"
+        )
         self._prog.setText(f"{self._done}/{self._total}" if self._total is not None else "–/–")
         self._id.setStyleSheet(f"color: {self._theme.color('text-pri')};")
         if self._selected:

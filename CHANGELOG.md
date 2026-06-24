@@ -116,6 +116,17 @@ in development); entries are grouped by the feature branch that delivered them, 
   too narrow for its text truncates with `…` and the **full label shows on hover** (replacing the
   earlier below-the-lane text). The Trial Info panel gains the **error-palette caption** and the
   **labeling-conventions hint**, with the Error value in the danger color.
+- **Dashboard polished to the HTML prototype** (`feat/dashboard-html-polish`): a multi-lens gap
+  analysis drove the editor-matching visual pass over `design/gui/.../03 Dashboard.dc.html`. Top bar
+  gains a **Save list** button and a labelled **◑ Light/Dark** theme toggle (flips with the theme);
+  the subject panel gains a **filter row** (filter box + ＋/－ add/remove) and a **"N found · K
+  selected"** count. Subject rows use a true **9px state dot**; step rows show an inline purple
+  **manual** tag, **monospace filenames** in titles (the step titles now read `… → allblocks.wav` /
+  `first_stims.txt` / `Trials.mat`), a 12px/600 mono index, and a neutral (not red) error action.
+  State **chips** are capsules with a real 7px colored dot, and dots/chips use the prototype's
+  per-theme soft-fill alpha (`Theme.soft_alpha`). Button/combobox paddings, header backgrounds, and
+  a bottom-centre **toast** (used by Save list) round it out. **Save list** persists the checked
+  subjects per task and restores them on the next scan.
 
 ### Fixed (later)
 

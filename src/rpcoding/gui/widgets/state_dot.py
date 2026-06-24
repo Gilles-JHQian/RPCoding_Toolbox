@@ -32,11 +32,11 @@ class StateDot(QLabel):
         self._apply(self._theme.running_color(), "●", filled=False)
 
     def _apply(self, color: str, glyph: str, filled: bool) -> None:
-        bg = color if filled else soft_rgba(color)
+        bg = color if filled else soft_rgba(color, self._theme.soft_alpha)
         self.setText(glyph)
         self.setStyleSheet(
             f"background: {bg}; border: 1.5px solid {color}; border-radius: 9px;"
-            "color: #ffffff; font-size: 10px; font-weight: 700;"
+            "color: #ffffff; font-size: 10px; font-weight: 600;"
         )
 
     def set_theme(self, theme: Theme) -> None:

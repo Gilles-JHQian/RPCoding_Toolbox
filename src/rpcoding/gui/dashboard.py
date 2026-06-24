@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -24,7 +25,7 @@ from rpcoding.core.steps import STEP_ORDER, EffectiveState, Step, StepKind, Step
 from rpcoding.core.steps import STEP_SPECS as _SPECS
 from rpcoding.core.tasks import Task
 from rpcoding.gui.batch_dialog import BatchDialog
-from rpcoding.gui.config import save_config
+from rpcoding.gui.config import load_subject_list, save_config, save_subject_list
 from rpcoding.gui.settings_dialog import SettingsDialog
 from rpcoding.gui.theme import Theme
 from rpcoding.gui.widgets.step_row import StepRow
@@ -65,6 +66,14 @@ class Dashboard(QWidget):
         body.addWidget(self._build_status_panel(), 1)
         outer.addLayout(body, 1)
 
+        # A small bottom-centre toast for transient feedback (e.g. "Subject list saved").
+        self._toast_label = QLabel("", self)
+        self._toast_label.setObjectName("Toast")
+        self._toast_label.setVisible(False)
+        self._toast_timer = QTimer(self)
+        self._toast_timer.setSingleShot(True)
+        self._toast_timer.timeout.connect(lambda: self._toast_label.setVisible(False))
+
         # Auto-rescan when the task changes (connected after the combo is populated).
         self._task_combo.currentIndexChanged.connect(self._on_task_changed)
 
@@ -74,9 +83,11 @@ class Dashboard(QWidget):
         bar.setObjectName("TopBar")
         bar.setFixedHeight(54)
         lay = QHBoxLayout(bar)
-        lay.setContentsMargins(16, 8, 16, 8)
+        lay.setContentsMargins(16, 0, 16, 0)
         lay.setSpacing(12)
-        lay.addWidget(QLabel("Task"))
+        task_label = QLabel("Task")
+        task_label.setObjectName("Secondary")
+        lay.addWidget(task_label)
         self._task_combo = QComboBox()
         self._task_combo.setMinimumWidth(240)
         for t in Task:
@@ -85,6 +96,9 @@ class Dashboard(QWidget):
         scan = QPushButton("Scan subjects")
         scan.clicked.connect(self._scan)
         lay.addWidget(scan)
+        save_list = QPushButton("Save list")
+        save_list.clicked.connect(self._save_list)
+        lay.addWidget(save_list)
         lay.addStretch(1)
         self._run_all = QPushButton("▶ Run automated · selected")
         self._run_all.setObjectName("Primary")
@@ -93,10 +107,11 @@ class Dashboard(QWidget):
         settings_btn = QPushButton("⚙ Settings")
         settings_btn.clicked.connect(self._open_settings)
         lay.addWidget(settings_btn)
-        theme_btn = QPushButton("◐")
-        theme_btn.setObjectName("Icon")
-        theme_btn.clicked.connect(self.theme_toggle_requested.emit)
-        lay.addWidget(theme_btn)
+        self._theme_btn = QPushButton("◑ Light")
+        self._theme_btn.setObjectName("ThemeToggle")
+        self._theme_btn.setText("◑ Light" if self._theme.name == "dark" else "◑ Dark")
+        self._theme_btn.clicked.connect(self.theme_toggle_requested.emit)
+        lay.addWidget(self._theme_btn)
         return bar
 
     def _build_side_panel(self) -> QWidget:
@@ -108,7 +123,7 @@ class Dashboard(QWidget):
         lay.setSpacing(0)
 
         header = QFrame()
-        header.setObjectName("PanelHeader")
+        header.setObjectName("SidePanelHeader")
         hl = QHBoxLayout(header)
         hl.setContentsMargins(16, 13, 16, 13)
         title = QLabel("Subjects")
@@ -116,12 +131,35 @@ class Dashboard(QWidget):
         hl.addWidget(title)
         hl.addStretch(1)
         self._subj_count = QLabel("")
-        self._subj_count.setObjectName("Meta")
+        self._subj_count.setObjectName("SubjCount")
         hl.addWidget(self._subj_count)
         lay.addWidget(header)
 
+        filter_row = QFrame()
+        filter_row.setObjectName("FilterRow")
+        fl = QHBoxLayout(filter_row)
+        fl.setContentsMargins(12, 9, 12, 9)
+        fl.setSpacing(8)
+        self._filter = QLineEdit()
+        self._filter.setObjectName("FilterInput")
+        self._filter.setPlaceholderText("filter…")
+        self._filter.textChanged.connect(self._on_filter)
+        fl.addWidget(self._filter, 1)
+        add_btn = QPushButton("＋")
+        add_btn.setObjectName("IconSmall")
+        add_btn.setToolTip("Add a subject by ID (from the filter box)")
+        add_btn.clicked.connect(self._add_subject)
+        fl.addWidget(add_btn)
+        rm_btn = QPushButton("－")
+        rm_btn.setObjectName("IconSmall")
+        rm_btn.setToolTip("Remove the selected subject from the list")
+        rm_btn.clicked.connect(self._remove_subject)
+        fl.addWidget(rm_btn)
+        lay.addWidget(filter_row)
+
         self._subjects = SubjectList(self._theme)
         self._subjects.subject_selected.connect(self._on_subject)
+        self._subjects.selection_changed.connect(self._update_count)
         lay.addWidget(self._subjects, 1)
         return panel
 
@@ -140,7 +178,7 @@ class Dashboard(QWidget):
         self._header.setObjectName("SubjectId")
         hl.addWidget(self._header)
         self._sub_path = QLabel("")
-        self._sub_path.setObjectName("Secondary")
+        self._sub_path.setObjectName("SubPath")
         hl.addWidget(self._sub_path)
         hl.addStretch(1)
         self._banner = QLabel("")
@@ -152,7 +190,7 @@ class Dashboard(QWidget):
         scroll.setWidgetResizable(True)
         rows_host = QWidget()
         rows_lay = QVBoxLayout(rows_host)
-        rows_lay.setContentsMargins(24, 0, 24, 0)
+        rows_lay.setContentsMargins(24, 6, 24, 6)
         rows_lay.setSpacing(0)
         self._rows: dict[Step, StepRow] = {}
         for i, step in enumerate(STEP_ORDER, start=1):
@@ -179,12 +217,19 @@ class Dashboard(QWidget):
         self._scan_token += 1
         subs = scan_subjects(paths.d_data_dir(self._config.droot, self.current_task))
         self._subjects.set_subjects(subs)
-        self._subj_count.setText(f"{len(subs)} found")
+        saved = load_subject_list(self.current_task.value)
+        if saved is not None:
+            self._subjects.set_checked(saved)  # restore a previously-saved selection
+        self._update_count()
         self._summary_queue = list(subs)
         self._summary_total = len(subs)
         self._summary_done = 0
         if subs:
             self._summary_timer.start()
+
+    def _update_count(self) -> None:
+        found = self._subjects.count()
+        self._subj_count.setText(f"{found} found · {self._subjects.selected_count()} selected")
 
     def _process_next_summary(self) -> None:
         if not self._summary_queue:
@@ -197,7 +242,10 @@ class Dashboard(QWidget):
             pass  # a cloud-sync placeholder we can't read yet; skip it this pass
         self._summary_done += 1
         n, k = self._summary_total, self._summary_done
-        self._subj_count.setText(f"{n} found" if k >= n else f"{n} found · {k}/{n}…")
+        if k >= n:
+            self._update_count()
+        else:
+            self._subj_count.setText(f"{n} found · {k}/{n}…")  # transient compute progress
         if self._summary_queue:
             self._summary_timer.start()  # next subject on the next event-loop tick
 
@@ -216,10 +264,48 @@ class Dashboard(QWidget):
 
     def apply_theme(self, theme: Theme) -> None:
         self._theme = theme
+        self._theme_btn.setText("◑ Light" if theme.name == "dark" else "◑ Dark")
         self._subjects.set_theme(theme)
         for row in self._rows.values():
             row.set_theme(theme)
         self._refresh_states()
+
+    # ---- subject-list curation (filter / add / remove / save) ----
+    def _on_filter(self, text: str) -> None:
+        self._subjects.set_filter(text)
+
+    def _add_subject(self) -> None:
+        sid = self._filter.text().strip()
+        if sid:
+            self._subjects.add_subject(sid)
+            self._filter.clear()
+
+    def _remove_subject(self) -> None:
+        sid = self._subjects.current_subject()
+        if sid:
+            self._subjects.remove_subject(sid)
+
+    def _save_list(self) -> None:
+        subs = self._subjects.checked_subjects()
+        save_subject_list(self.current_task.value, subs)
+        self._toast(f"Saved {len(subs)} subject(s) to the list")
+
+    def _toast(self, message: str) -> None:
+        self._toast_label.setText(message)
+        self._toast_label.adjustSize()
+        self._position_toast()
+        self._toast_label.setVisible(True)
+        self._toast_label.raise_()
+        self._toast_timer.start(2200)
+
+    def _position_toast(self) -> None:
+        lbl = self._toast_label
+        lbl.move((self.width() - lbl.width()) // 2, self.height() - lbl.height() - 22)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        if self._toast_label.isVisible():
+            self._position_toast()
 
     def refresh(self) -> None:
         """Recompute and repaint step states (e.g. after the editor saves an output)."""
