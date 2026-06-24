@@ -97,6 +97,18 @@ def test_set_theme_does_not_raise(qtbot):
     ed.set_theme(LIGHT_THEME)
 
 
+def test_theme_switch_updates_background(qtbot):
+    from rpcoding.core.labels import Tier
+
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", []), True)])
+    dark_bg = ed._glw.backgroundBrush().color().name().lower()
+    ed.set_theme(LIGHT_THEME)
+    light_bg = ed._glw.backgroundBrush().color().name().lower()
+    assert dark_bg != light_bg and light_bg == "#ffffff"  # light panel
+
+
 def test_all_lanes_interactive(qtbot):
     ed = AudioEditor(DARK_THEME)
     qtbot.addWidget(ed)

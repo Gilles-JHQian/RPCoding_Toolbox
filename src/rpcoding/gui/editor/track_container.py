@@ -116,6 +116,7 @@ class AudioEditor(QWidget):
         body = QHBoxLayout()
         outer.addLayout(body, 1)
         self._glw = pg.GraphicsLayoutWidget()
+        self._glw.setBackground(theme.color("panel"))
         body.addWidget(self._glw, 1)
         self._glw.scene().sigMouseClicked.connect(self._on_scene_click)
         self._trial_panel = TrialInfoPanel()
@@ -423,10 +424,31 @@ class AudioEditor(QWidget):
 
     def set_theme(self, theme: Theme) -> None:
         self._theme = theme
+        self._glw.setBackground(theme.color("panel"))  # the track-name column / surrounds
         self.waveform.apply_theme(theme)
         self.spectrogram.apply_theme(theme)
         for lane in self._label_lanes:
             lane.apply_theme(theme)
+        self._restyle_overlays()
+        self._recolor_row_labels()
+
+    def _restyle_overlays(self) -> None:
+        accent = self._theme.color("accent")
+        fill = QColor(accent)
+        fill.setAlpha(40)
+        for region in (self._sel_master, *self._sel_regions):
+            region.setBrush(pg.mkBrush(fill))
+            for line in region.lines:
+                line.setPen(pg.mkPen(accent, width=1))
+        dashed = pg.mkPen(accent, width=1, style=Qt.PenStyle.DashLine)
+        for line in (self._cursor_master, *self._cursor_lines):
+            line.setPen(dashed)
+
+    def _recolor_row_labels(self) -> None:
+        color = self._theme.color("text-sec")
+        plots = (self._ruler, self._wave_plot, self._spec_plot)
+        for label in [p._name_label for p in plots] + self._lane_labels:
+            label.setText(label.text, color=color, size="9pt", justify="left")
 
     def load(self, wav_path, cache_dir=None) -> None:
         self._player.stop()  # don't keep playing a previous file

@@ -177,6 +177,11 @@ cleaner view. The toolbar selection readout is editable (type a precise start/en
   cursor → `select_at`). The selected label becomes draggable (body + endpoints; unselected labels
   stay non-movable so clicks reach the lane), **Enter** renames it, an error-palette code appends to
   it, **Delete** removes it, and its span highlights across all lanes.
+- **Theming & label rendering:** the editor fully re-themes via `set_theme` (the `GraphicsLayoutWidget`
+  background, each lane viewbox, the track-name labels, and the selection/cursor overlays) using the
+  light/dark design tokens. Labels render as chips (`label-bg`/`label-border`/`label-text`); the
+  response lane is tinted (`response-bg`). When a label's on-screen width is narrower than its text,
+  the text is positioned just below the label instead of centred.
 - **Clipboard & undo/redo:** Ctrl+C/X/V copy/cut/paste a label (paste at the cursor/selection,
   preserving length); Ctrl+Z/Y undo/redo via a snapshot history of the editable tier (recorded on
   each `tier_changed`). The selection span is a movable `LinearRegionItem` (drag body = move, edge =

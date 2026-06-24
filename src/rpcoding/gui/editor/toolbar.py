@@ -62,12 +62,16 @@ class EditorToolbar(QFrame):
 
         lay.addWidget(QLabel("Vol"))
         self._vol = QSlider(Qt.Orientation.Horizontal)
-        self._vol.setRange(0, 200)  # 0% .. 200% playback gain
+        self._vol.setRange(0, 1000)  # 0x .. 10x playback gain (quiet recordings need a lot)
         self._vol.setValue(100)
         self._vol.setFixedWidth(96)
-        self._vol.setToolTip("Playback volume")
-        self._vol.valueChanged.connect(lambda v: self.volume_changed.emit(v / 100.0))
+        self._vol.setToolTip("Playback volume (up to 10x)")
+        self._vol.valueChanged.connect(self._on_vol_changed)
         lay.addWidget(self._vol)
+        self._vol_val = QLabel("1.0×")
+        self._vol_val.setObjectName("Meta")
+        self._vol_val.setFixedWidth(34)
+        lay.addWidget(self._vol_val)
 
         # Editable selection readout: click a field to type a precise start / end (seconds).
         lay.addWidget(QLabel("sel"))
@@ -138,6 +142,10 @@ class EditorToolbar(QFrame):
 
     def set_playing(self, playing: bool) -> None:
         self._play.setText("⏸ Stop" if playing else "▶ Play")
+
+    def _on_vol_changed(self, v: int) -> None:
+        self.volume_changed.emit(v / 100.0)
+        self._vol_val.setText(f"{v / 100:.1f}×")
 
     def set_selection_text(self, span) -> None:
         # Don't clobber a field the user is currently typing into.

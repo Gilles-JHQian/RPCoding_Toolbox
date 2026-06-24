@@ -37,6 +37,11 @@ DARK: dict[str, str] = {
     "btn-border": "#353c48",
     "lane-bg": "#0e1014",
     "wave-stroke": "#46c7d6",
+    "wave-center": "#202832",
+    "label-bg": "#272d38",
+    "label-border": "#3a4250",
+    "label-text": "#c4ccd9",
+    "response-bg": "#14181f",
 }
 
 LIGHT: dict[str, str] = {
@@ -54,6 +59,11 @@ LIGHT: dict[str, str] = {
     "btn-border": "#d3d8e0",
     "lane-bg": "#f3f5f9",
     "wave-stroke": "#1693a0",
+    "wave-center": "#d6dde6",
+    "label-bg": "#eef1f6",
+    "label-border": "#d3d8e0",
+    "label-text": "#3a4250",
+    "response-bg": "#fafbfd",
 }
 
 # EffectiveState -> (dark hue, light hue)

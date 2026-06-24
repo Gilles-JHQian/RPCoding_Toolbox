@@ -89,7 +89,11 @@ span is highlighted on the waveform and spectrogram above.
 plays that span; otherwise if a cursor is set it plays from there to the end; otherwise the whole
 file. Space (or the button) again stops. The **cursor follows playback** (the view auto-scrolls to
 keep it in view) and is left where you stopped, so Space resumes from there. The **Vol** slider sets
-the playback volume (separate from **Amp**, which only scales the waveform's on-screen height).
+the playback volume (up to 10× for quiet recordings; separate from **Amp**, which only scales the
+waveform's on-screen height).
+
+The editor follows the **light/dark theme** (toggle on the dashboard). When the time axis is zoomed
+so a label is narrower than its text, the text drops just below the label so it stays readable.
 
 ### Keyboard / mouse
 
