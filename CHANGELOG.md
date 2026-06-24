@@ -136,6 +136,12 @@ in development); entries are grouped by the feature branch that delivered them, 
   retitles the toolbar readout to **"label"** and shows its start / end / length; typing into the
   start/end fields **retimes the label itself** (not just the free selection), with the mirrored
   selection following along. `LabelLane.resize_active` records it for undo.
+- **MFA setup panel in Settings** (`feat/settings-mfa-check`): the Settings dialog now has a
+  **Montreal Forced Aligner** section that probes the install — engine (`mfa`), acoustic model,
+  base + custom dictionaries, and the `noisereduce` denoise dep — and shows each as ✓/✗. A
+  **Download & install models** button runs `ensure_mfa_setup` (pip-installs missing pipeline deps,
+  `mfa model download`, installs the vendored custom dicts) off the UI thread, with a **Re-check**
+  button. New `mfa_status()` / `ensure_mfa_setup()` in `core/mfa/models.py`.
 
 ### Fixed (later)
 

@@ -400,7 +400,7 @@ class Dashboard(QWidget):
             self._refresh_states()
 
     def _open_settings(self) -> None:
-        dialog = SettingsDialog(self._config, self)
+        dialog = SettingsDialog(self._config, self._theme, self)
         if dialog.exec() != SettingsDialog.DialogCode.Accepted:
             return
         self.set_config(dialog.result_config())

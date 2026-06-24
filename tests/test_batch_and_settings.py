@@ -45,6 +45,13 @@ def test_settings_blank_word_list_is_none(qtbot, tmp_path):
     assert dlg.result_config().word_list is None
 
 
+def test_settings_dialog_has_mfa_panel(qtbot, tmp_path):
+    dlg = SettingsDialog(AppConfig(droot=tmp_path))
+    qtbot.addWidget(dlg)
+    assert dlg._mfa_install_btn.text() in ("Download & install models", "Re-install / repair")
+    assert dlg._mfa_status_lay.count() >= 4  # one status row per probed item
+
+
 def test_batch_dialog_rows_and_progress(qtbot, tmp_path):
     dlg = BatchDialog(AppConfig(droot=tmp_path), Task.LEXICAL_NODELAY, ["D100", "D101"])
     qtbot.addWidget(dlg)

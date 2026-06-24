@@ -6,8 +6,9 @@ import textwrap
 
 import pytest
 
+from rpcoding.core.mfa import models as mfa_models
 from rpcoding.core.mfa.ingest import ingest_mfa_tiers
-from rpcoding.core.mfa.models import install_custom_dicts
+from rpcoding.core.mfa.models import install_custom_dicts, mfa_status
 from rpcoding.core.mfa.runner import build_mfa_command, run_mfa, verify_inputs
 
 
@@ -80,3 +81,27 @@ def test_install_custom_dicts(tmp_path):
     names = sorted(p.name for p in copied)
     assert "english_us_lr.dict" in names
     assert all((tmp_path / n).exists() for n in names)
+
+
+def test_mfa_status_reflects_install(tmp_path, monkeypatch):
+    adir = tmp_path / "acoustic"
+    ddir = tmp_path / "dictionary"
+    adir.mkdir()
+    ddir.mkdir()
+    monkeypatch.setattr(mfa_models, "default_mfa_acoustic_dir", lambda: adir)
+    monkeypatch.setattr(mfa_models, "default_mfa_dict_dir", lambda: ddir)
+    monkeypatch.setattr(mfa_models, "find_mfa_exe", lambda *a, **k: None)
+    monkeypatch.setattr(mfa_models, "_module_available", lambda name: False)
+
+    st = mfa_status()
+    labels = [c.label for c in st.checks]
+    assert {"MFA engine", "Acoustic model", "Base dictionary", "Custom dictionaries"} <= set(labels)
+    assert not st.complete  # nothing present yet
+
+    (adir / "english_us_arpa.zip").write_bytes(b"x")
+    (ddir / "english_us_arpa.dict").write_bytes(b"x")
+    for src in mfa_models.VENDORED_DICT_DIR.glob("*.dict"):
+        (ddir / src.name).write_bytes(b"x")
+    monkeypatch.setattr(mfa_models, "find_mfa_exe", lambda *a, **k: tmp_path / "mfa")
+    monkeypatch.setattr(mfa_models, "_module_available", lambda name: True)
+    assert mfa_status().complete  # all checks satisfied
