@@ -11,7 +11,7 @@ from pathlib import Path
 import pyqtgraph as pg
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QHBoxLayout, QInputDialog, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QGraphicsItem, QHBoxLayout, QInputDialog, QVBoxLayout, QWidget
 
 from rpcoding.core.audio.io import duration_seconds
 from rpcoding.core.audio.render.cache import AudioRenderCache
@@ -36,6 +36,7 @@ _NAME_W = 104  # width of the left track-name column
 _RULER_H = 26
 _WAVE_H = 100  # waveform a bit shorter ...
 _SPEC_H = 176  # ... spectrogram taller
+_LANE_GAP = 20  # gap below each label lane; a too-short label's text is tucked into it
 _INITIAL_VIEW_S = 60.0  # open zoomed to this window (fast first render); Fit shows the whole file
 
 # Friendly left-column names for the lanes (the internal tier name still drives the trial index).
@@ -350,12 +351,19 @@ class AudioEditor(QWidget):
 
     def add_label_lane(self, name: str, editable: bool = False) -> LabelLane:
         display = _LANE_DISPLAY.get(name, name)
+        lane_row = self._row
         plot = self._add_row(
             display + (" ✎" if editable else ""), LABEL_LANE_HEIGHT, viewbox=InteractiveViewBox()
         )
         plot.hideAxis("bottom")
         plot.setXLink(self._wave_plot)
-        self._wire_vb(plot.getViewBox())
+        # Leave a gap below the lane and let the lane draw outside its rect, so a too-short label's
+        # text can be tucked into that gap (below the track) instead of overlapping the band.
+        self._glw.ci.layout.setRowSpacing(lane_row, _LANE_GAP)
+        vb = plot.getViewBox()
+        vb.setFlag(QGraphicsItem.GraphicsItemFlag.ItemClipsChildrenToShape, False)
+        vb.childGroup.setFlag(QGraphicsItem.GraphicsItemFlag.ItemClipsChildrenToShape, False)
+        self._wire_vb(vb)
         lane = LabelLane(plot, name, self._theme, editable=editable)
         lane.label_selected.connect(lambda iv, ln=lane: self._on_label_selected(ln, iv))
         if editable:
@@ -572,7 +580,10 @@ class AudioEditor(QWidget):
         for plot in (self._wave_plot, self._spec_plot, self._ruler):
             vb = plot.getViewBox()
             if vb.sceneBoundingRect().contains(pos):
-                self.set_cursor(float(vb.mapSceneToView(pos).x()))
+                x = float(vb.mapSceneToView(pos).x())
+                self.set_cursor(x)
+                if self._player.is_playing():  # clicking while playing seeks: continue from here
+                    self._player.play(self._wav_path, x, None)
                 return
         self.set_cursor(None)
 
