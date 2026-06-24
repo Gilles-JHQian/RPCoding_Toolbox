@@ -78,6 +78,12 @@ in development); entries are grouped by the feature branch that delivered them, 
   and **undo/redo** (Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z) over the editable tier. The selection span is
   now **resizable** — drag its body to move, an edge to resize, on the waveform or spectrogram. And
   while you drag a label, its cross-lane highlight follows in **real time** (not only on release).
+- **Unified editor + display polish** (`feat/editor-unified-readout`): both manual steps now use one
+  lane layout — first stim · condition · cue · response — toggling only which lane is editable (the
+  response lane starts from the saved coding, else the MFA response words). The selection readout is
+  **editable** (type a precise start/end in seconds). The waveform is shorter and the spectrogram
+  taller; the waveform amplitude **auto-scales** to a robust percentile of the signal (ignoring click
+  transients), and the spectrogram's default dB window is raised for a cleaner, less-bright view.
 
 ### Data compatibility
 

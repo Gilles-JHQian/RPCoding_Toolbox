@@ -1,9 +1,9 @@
 """Map a manual pipeline step to the editor tiers it loads and the file ``save`` writes.
 
-Pure (no Qt): given a results dir and a manual :class:`Step`, return the list of
-``(name, Tier, editable)`` tuples to feed :meth:`AudioEditor.set_tiers` plus the Audacity ``.txt``
-path the editable tier saves to. Reference tiers (cue/condition events, MFA output) load read-only;
-the one editable tier is what the coder produces.
+Both manual steps (mark-first-stimuli, response-coding) share one unified lane layout — first stim,
+condition, cue, response — so the two editors look the same; only which lane is editable (and where
+``save`` writes) differs by step. Reference tiers load read-only; the response lane starts from the
+saved coding, else the MFA-aligned response words, else empty.
 """
 
 from __future__ import annotations
@@ -15,15 +15,6 @@ from rpcoding.core.labels import Tier, read_tier
 from rpcoding.core.mfa.ingest import ingest_mfa_tiers
 from rpcoding.core.steps import Step
 
-# Reference (read-only) tiers shown during response coding, in display order.
-_RESP_REFERENCE = (
-    ("cue_events", paths.CUE_EVENTS_TXT),
-    ("condition_events", paths.CONDITION_EVENTS_TXT),
-)
-# Word-level MFA tiers worth seeing while coding. The dense ``*_phones`` tiers (one row per phoneme,
-# thousands of intervals) are deliberately excluded — they're unreadable here and slow the editor.
-_MFA_REFERENCE = ("mfa_stim_words", "mfa_resp_words", "mfa_whisper_rscode", "mfa_manual_errcode")
-
 TierSpec = tuple[str, Tier, bool]
 
 
@@ -32,28 +23,35 @@ def _load_or_empty(path: Path, name: str) -> Tier:
     return read_tier(path, name) if path.exists() else Tier(name, [])
 
 
+def _response_tier(results_dir: Path) -> Tier:
+    """The response lane: the saved coding if present, else the MFA response words, else empty."""
+    saved = results_dir / paths.RESP_WORDS_ERRORS_TXT
+    if saved.exists():
+        return read_tier(saved, "response")
+    mfa = ingest_mfa_tiers(results_dir / paths.MFA_DIRNAME)
+    src = mfa.get("mfa_resp_words")
+    return Tier("response", list(src.intervals)) if src is not None else Tier("response", [])
+
+
 def tiers_for_step(results_dir: Path | str, step: Step) -> tuple[list[TierSpec], Path]:
     """Return ``(tier_specs, save_path)`` for a manual, editor-backed step.
 
     Raises ``ValueError`` for steps that aren't edited in the audio editor.
     """
     results_dir = Path(results_dir)
+    is_first = step == Step.MARK_FIRST_STIMS
+    is_resp = step == Step.RESPONSE_CODING
+    if not (is_first or is_resp):
+        raise ValueError(f"{step} is not an editor-backed manual step")
 
-    if step == Step.MARK_FIRST_STIMS:
-        save_path = results_dir / paths.FIRST_STIMS_TXT
-        return [("first_stims", _load_or_empty(save_path, "first_stims"), True)], save_path
-
-    if step == Step.RESPONSE_CODING:
-        specs: list[TierSpec] = [
-            (name, _load_or_empty(results_dir / fname, name), False)
-            for name, fname in _RESP_REFERENCE
-        ]
-        mfa = ingest_mfa_tiers(results_dir / paths.MFA_DIRNAME)
-        for name in _MFA_REFERENCE:
-            if name in mfa:
-                specs.append((name, mfa[name], False))
-        save_path = results_dir / paths.RESP_WORDS_ERRORS_TXT
-        specs.append(("response", _load_or_empty(save_path, "response"), True))
-        return specs, save_path
-
-    raise ValueError(f"{step} is not an editor-backed manual step")
+    first = _load_or_empty(results_dir / paths.FIRST_STIMS_TXT, "first_stims")
+    cond = _load_or_empty(results_dir / paths.CONDITION_EVENTS_TXT, "condition_events")
+    cue = _load_or_empty(results_dir / paths.CUE_EVENTS_TXT, "cue_events")
+    specs: list[TierSpec] = [
+        ("first_stims", first, is_first),
+        ("condition_events", cond, False),
+        ("cue_events", cue, False),
+        ("response", _response_tier(results_dir), is_resp),
+    ]
+    save_path = results_dir / (paths.FIRST_STIMS_TXT if is_first else paths.RESP_WORDS_ERRORS_TXT)
+    return specs, save_path

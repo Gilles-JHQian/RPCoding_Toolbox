@@ -40,7 +40,11 @@ class SpectrogramLane(QObject):
         self._mmap = np.load(str(spec_path), mmap_mode="r")
         self._meta = meta
         self.plot.setYRange(0, meta["n_rows"], padding=0)
-        self._hist.setLevels(meta["p2"], meta["p98"])
+        # Auto-scaled from the data percentiles, but with both bounds raised: the lower bound clips
+        # more of the noise floor to black, the upper makes the loud parts less saturated overall.
+        p2, p98 = meta["p2"], meta["p98"]
+        rng = max(p98 - p2, 1e-6)
+        self._hist.setLevels(p2 + 0.30 * rng, p98 + 0.25 * rng)
 
     def set_view(self, t0: float, t1: float, px: int) -> None:
         if self._mmap is None or self._meta is None:

@@ -156,6 +156,11 @@ after), <15 ms reslice at any zoom.
 [editor/track_container.py](../src/rpcoding/gui/editor/track_container.py) (`AudioEditor`) stacks a
 time ruler, waveform, spectrogram and N label lanes in a `GraphicsLayoutWidget`: col 0 = horizontal
 track-name labels, col 1 = the plots (no left axis). It opens as a **separate top-level window**.
+Both manual steps use one unified lane layout (first stim · condition · cue · response;
+[editor_loader.py](../src/rpcoding/gui/editor_loader.py)), toggling only the editable lane. The
+waveform amplitude auto-scales to a robust percentile of the per-bin peak (so click transients don't
+flatten speech), and the spectrogram's default dB window is raised off the `p2/p98` percentiles for a
+cleaner view. The toolbar selection readout is editable (type a precise start/end).
 
 - **Label virtualization** ([editor/label_lane.py](../src/rpcoding/gui/editor/label_lane.py)):
   cue/condition/MFA tiers hold hundreds–thousands of intervals. The lane keeps intervals in a list

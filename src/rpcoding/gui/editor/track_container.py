@@ -33,8 +33,19 @@ pg.setConfigOptions(imageAxisOrder="row-major")
 
 _NAME_W = 104  # width of the left track-name column
 _RULER_H = 26
-_LANE_H = 132
+_WAVE_H = 100  # waveform a bit shorter ...
+_SPEC_H = 176  # ... spectrogram taller
 _INITIAL_VIEW_S = 60.0  # open zoomed to this window (fast first render); Fit shows the whole file
+
+# Friendly left-column names for the lanes (the internal tier name still drives the trial index).
+_LANE_DISPLAY = {
+    "first_stims": "first stim",
+    "condition_events": "condition",
+    "cue_events": "cue",
+    "response": "response",
+    "mfa_resp_words": "MFA resp",
+    "mfa_stim_words": "MFA stim",
+}
 
 
 class TimeAxisItem(pg.AxisItem):
@@ -95,6 +106,7 @@ class AudioEditor(QWidget):
         self._toolbar.zoom_in_requested.connect(lambda: self.zoom(0.6))
         self._toolbar.zoom_out_requested.connect(lambda: self.zoom(1.7))
         self._toolbar.fit_requested.connect(self.fit)
+        self._toolbar.selection_edited.connect(self._on_selection_edited)
         outer.addWidget(self._toolbar)
 
         body = QHBoxLayout()
@@ -115,13 +127,13 @@ class AudioEditor(QWidget):
             axis={"bottom": TimeAxisItem(orientation="bottom")},
             viewbox=InteractiveViewBox(),
         )
-        self._wave_plot = self._add_row("Waveform", _LANE_H, viewbox=InteractiveViewBox())
+        self._wave_plot = self._add_row("Waveform", _WAVE_H, viewbox=InteractiveViewBox())
         self._wave_plot.hideAxis("bottom")
         self._owner_vb = self._wave_plot.getViewBox()
         self._wire_vb(self._owner_vb)
         self.waveform = WaveformLane(self._wave_plot, theme)
 
-        self._spec_plot = self._add_row("Spectrogram", _LANE_H, viewbox=InteractiveViewBox())
+        self._spec_plot = self._add_row("Spectrogram", _SPEC_H, viewbox=InteractiveViewBox())
         self._spec_plot.hideAxis("bottom")
         self._hist = pg.HistogramLUTItem()
         self._glw.addItem(self._hist, row=self._row - 1, col=2)
@@ -276,9 +288,14 @@ class AudioEditor(QWidget):
     def set_selection(self, span: tuple[float, float] | None) -> None:
         self._sel.set_span(span)
 
+    def _on_selection_edited(self, a: float, b: float) -> None:
+        self.set_selection((a, b))
+        self.setFocus()  # return keyboard focus to the editor after typing in a readout field
+
     def add_label_lane(self, name: str, editable: bool = False) -> LabelLane:
+        display = _LANE_DISPLAY.get(name, name)
         plot = self._add_row(
-            name + (" ✎" if editable else ""), LABEL_LANE_HEIGHT, viewbox=InteractiveViewBox()
+            display + (" ✎" if editable else ""), LABEL_LANE_HEIGHT, viewbox=InteractiveViewBox()
         )
         plot.hideAxis("bottom")
         plot.setXLink(self._wave_plot)

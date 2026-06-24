@@ -3,7 +3,16 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QProgressBar, QPushButton, QSlider
+from PySide6.QtGui import QDoubleValidator
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QProgressBar,
+    QPushButton,
+    QSlider,
+)
 
 
 class EditorToolbar(QFrame):
@@ -13,6 +22,7 @@ class EditorToolbar(QFrame):
     zoom_in_requested = Signal()
     zoom_out_requested = Signal()
     fit_requested = Signal()
+    selection_edited = Signal(float, float)  # start, end (seconds) typed into the readout
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -43,12 +53,19 @@ class EditorToolbar(QFrame):
         self._amp.valueChanged.connect(lambda v: self.amplitude_changed.emit(v / 100.0))
         lay.addWidget(self._amp)
 
-        self._selection = QLabel("")
-        self._selection.setObjectName("Meta")
-        lay.addWidget(self._selection)
+        # Editable selection readout: click a field to type a precise start / end (seconds).
+        lay.addWidget(QLabel("sel"))
+        self._sel_start = self._make_time_field("start")
+        lay.addWidget(self._sel_start)
+        lay.addWidget(QLabel("–"))
+        self._sel_end = self._make_time_field("end")
+        lay.addWidget(self._sel_end)
+        self._sel_dur = QLabel("")
+        self._sel_dur.setObjectName("Meta")
+        lay.addWidget(self._sel_dur)
 
         lay.addStretch(1)
-        self._hint = QLabel("drag waveform to select · Ctrl+B to label")
+        self._hint = QLabel("drag to select · Ctrl+B to label")
         self._hint.setObjectName("Meta")
         lay.addWidget(self._hint)
 
@@ -71,6 +88,24 @@ class EditorToolbar(QFrame):
             w.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._amp.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
+    def _make_time_field(self, placeholder: str) -> QLineEdit:
+        field = QLineEdit()
+        field.setObjectName("Mono")
+        field.setFixedWidth(76)
+        field.setPlaceholderText(placeholder)
+        field.setValidator(QDoubleValidator(0.0, 1e7, 6, field))
+        field.editingFinished.connect(self._emit_selection_edit)
+        return field
+
+    def _emit_selection_edit(self) -> None:
+        try:
+            a = float(self._sel_start.text())
+            b = float(self._sel_end.text())
+        except ValueError:
+            return
+        if a != b:
+            self.selection_edited.emit(min(a, b), max(a, b))
+
     def set_progress(self, pct: int, msg: str = "") -> None:
         self._bar.setVisible(True)
         self._bar.setValue(pct)
@@ -85,8 +120,17 @@ class EditorToolbar(QFrame):
         self._status.setText(msg)
 
     def set_selection_text(self, span) -> None:
+        # Don't clobber a field the user is currently typing into.
         if span is None:
-            self._selection.setText("")
+            if not self._sel_start.hasFocus():
+                self._sel_start.clear()
+            if not self._sel_end.hasFocus():
+                self._sel_end.clear()
+            self._sel_dur.setText("")
         else:
             a, b = span
-            self._selection.setText(f"{a:.3f} – {b:.3f} s  ({b - a:.3f})")
+            if not self._sel_start.hasFocus():
+                self._sel_start.setText(f"{a:.3f}")
+            if not self._sel_end.hasFocus():
+                self._sel_end.setText(f"{b:.3f}")
+            self._sel_dur.setText(f"({b - a:.3f} s)")

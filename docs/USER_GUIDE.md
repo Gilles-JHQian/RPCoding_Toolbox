@@ -63,15 +63,17 @@ steps are skipped. Manual steps and the optional denoise step are not run by bat
 
 ## 5. Annotation editor
 
-Opened from a manual step. Layout: a shared time axis with a waveform lane, a spectrogram lane, the
-relevant label tracks, and a **Trial Info** panel.
+Opened from a manual step. Both manual steps share one layout: a shared time axis with a **waveform**
+lane, a **spectrogram** lane, and four label tracks — **first stim · condition · cue · response** —
+plus a **Trial Info** panel. Only the editable track differs by step:
 
-- **Mark first stimuli**: one editable `first_stims` track. Mark each block's first stimulus onset.
-- **Response coding**: read-only `cue_events`, `condition_events`, and the MFA tiers for reference,
-  plus one editable `response` track.
+- **Mark first stimuli**: the `first stim` track is editable (the rest are read-only reference).
+- **Response coding**: the `response` track is editable; it starts from your saved coding, else the
+  MFA-aligned response words, else empty.
 
-Drag/zoom/pan work over **any** lane (waveform, spectrogram, label tracks). Selecting a span — or a
-label — shows the trial it maps to in the Trial Info panel and highlights that time across all lanes.
+Drag/zoom/pan work over **any** lane. Selecting a span — or a label — shows the trial it maps to in
+the Trial Info panel and highlights that time across all lanes. The selection readout in the toolbar
+is **editable**: click the start/end field to type a precise time (seconds).
 
 **Cursor & selection:** click an audio lane to drop a cursor; left-drag to select a span. Once a span
 exists, dragging **inside** it moves the whole selection, dragging an **edge** resizes it, and
