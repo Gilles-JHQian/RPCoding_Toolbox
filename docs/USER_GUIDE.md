@@ -23,7 +23,7 @@ MATLAB + Audacity + MFA results.
 | Field | Meaning |
 |---|---|
 | **Data root** | `$BOX/CoganLab`. The `D_Data`, `ECoG_Task_Data`, and results trees are derived from it. |
-| **Word list** / **Nonword list** | The lab's `word_lst.mat` / `nonword_lst.mat` (variables `words` / `nonwords`). Required by **Write Trials** to classify each stimulus as Word/Nonword. |
+| **Word list** / **Nonword list** | The lab's `word_lst.mat` / `nonword_lst.mat` (variables `words` / `nonwords`), used by **Write Trials** to classify each stimulus as Word/Nonword. **Leave blank to use the bundled lab lists** (the default, mirroring the MATLAB pipeline); set a path only to override with your own. |
 | **MFA task config** | Per task, the MFA pipeline config name. Defaults: `LexicalDecRepNoDelay → lexical_repeat_no_delay`, `LexicalDecRepDelay → lexical_repeat`. `Uniqueness_Point` is unmapped until you supply its config. |
 
 Settings are saved immediately and applied to the currently selected subject.
@@ -152,7 +152,8 @@ and marks the step done on the dashboard. Use **← Back** or **Esc** to return.
 
 | Symptom | Cause / fix |
 |---|---|
-| *"Word/nonword lists are not configured"* on Write Trials | Set both lists in ⚙ Settings. |
+| Wrong Word/Nonword classification | Write Trials uses the bundled lab lists by default; override with your own `word_lst.mat` / `nonword_lst.mat` in ⚙ Settings if needed. |
+| An unexpected error | The app no longer hard-crashes — it shows a dialog with the full traceback (click **Show Details**). A failing step also shows the message; the full MFA log is at `<results>/mfa_run.log`. |
 | *"No Trials.mat under …"* / *"more than one Trials.mat"* | The upstream `Trials.mat` is required and must be unique under `D_Data/<task>/<subj>/**/mat/`. |
 | MFA step errors | Confirm the task is mapped in Settings and the MFA models/dictionary are installed (`scripts/setup_env.*`). The app stays usable — you can drop `mfa/*.txt` in by hand and continue. |
 | A step shows **Stale** | An upstream output changed since this step ran (e.g. you re-edited `first_stims.txt`). Re-run it. |

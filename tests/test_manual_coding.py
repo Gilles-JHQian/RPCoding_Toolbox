@@ -73,8 +73,20 @@ def test_tiers_for_step_rejects_auto_step(tmp_path):
         tiers_for_step(tmp_path, Step.CONCAT_WAVS)
 
 
-def test_write_trials_requires_word_lists(tmp_path):
-    cfg = AppConfig(droot=tmp_path)  # no word_list / nonword_list
+def test_bundled_word_lists_are_available():
+    # The lab lists are bundled (mirrors MATLAB's `load word_lst`) and load via the same loader.
+    from rpcoding.core.wordlists import DEFAULT_NONWORD_LIST, DEFAULT_WORD_LIST, load_name_list
+
+    assert DEFAULT_WORD_LIST.exists() and DEFAULT_NONWORD_LIST.exists()
+    assert "bacon.wav" in load_name_list(DEFAULT_WORD_LIST, "words")
+    assert "banel.wav" in load_name_list(DEFAULT_NONWORD_LIST, "nonwords")
+
+
+def test_write_trials_defaults_to_bundled_lists(tmp_path):
+    cfg = AppConfig(droot=tmp_path)  # no word_list / nonword_list -> bundled defaults are used
     session = SubjectSession(cfg, Task.LEXICAL_NODELAY, "D999")
-    with pytest.raises(ValueError, match="Word/nonword lists are not configured"):
+    # No longer the old "not configured" error; it defaults to the bundled lists and only fails
+    # later, on this nonexistent subject's missing trialInfo.
+    with pytest.raises(Exception) as exc:  # noqa: PT011 - asserting it's NOT the lists error
         _write_trials(session)
+    assert "not configured" not in str(exc.value)

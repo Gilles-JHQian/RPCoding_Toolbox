@@ -27,6 +27,7 @@ from rpcoding.core.steps import STEP_SPECS as _SPECS
 from rpcoding.core.tasks import Task
 from rpcoding.gui.batch_dialog import BatchDialog
 from rpcoding.gui.config import load_subject_list, save_config, save_subject_list
+from rpcoding.gui.error_dialog import format_exception, show_error
 from rpcoding.gui.settings_dialog import SettingsDialog
 from rpcoding.gui.theme import Theme
 from rpcoding.gui.widgets.step_row import StepRow
@@ -372,12 +373,23 @@ class Dashboard(QWidget):
         self._rows[step].set_running()
 
         def done() -> None:
-            self._refresh_states()
-            if self._session is not None:
-                d, t, st = self._session.summary()
-                self._subjects.set_summary(self._session.subject, d, t, st)
+            try:
+                self._refresh_states()
+                if self._session is not None:
+                    d, t, st = self._session.summary()
+                    self._subjects.set_summary(self._session.subject, d, t, st)
+            except Exception as exc:  # noqa: BLE001 - never let a refresh crash the app
+                show_error(
+                    "Could not refresh status after the step.", format_exception(exc), parent=self
+                )
 
-        self._active = run_in_thread(self, run_step, self._session, step, on_finished=done)
+        def failed(message: str) -> None:
+            # The worker already recorded the error (red chip); also pop a dialog so it's visible.
+            show_error(f"Step failed: {_SPECS[step].title}", message, parent=self)
+
+        self._active = run_in_thread(
+            self, run_step, self._session, step, on_finished=done, on_error=failed
+        )
 
     def _show_error(self, step: Step) -> None:
         if self._session is None:

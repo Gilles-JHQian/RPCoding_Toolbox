@@ -45,6 +45,10 @@ rpcoding-gui = "rpcoding.gui.app:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+# Bundled lab word/nonword reference lists used by the write-Trials step.
+"rpcoding.core.rpcode" = ["wordlists/*.mat"]
+
 [tool.black]
 line-length = 100
 target-version = ["py311"]

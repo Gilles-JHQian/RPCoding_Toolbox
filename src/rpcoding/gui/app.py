@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QApplication, QFileDialog
 
 from rpcoding.core.config import AppConfig
 from rpcoding.gui.config import load_config, save_config
+from rpcoding.gui.error_dialog import install_excepthook
 from rpcoding.gui.main_window import MainWindow
 from rpcoding.gui.theme import DARK_THEME
 
@@ -27,6 +28,7 @@ def _ensure_config() -> AppConfig | None:
 
 def main(argv: list[str] | None = None) -> int:
     app = QApplication(argv if argv is not None else sys.argv)
+    install_excepthook()  # an uncaught slot exception should pop a dialog, not kill the app
     config = _ensure_config()
     if config is None:
         return 0

@@ -35,13 +35,16 @@ from rpcoding.gui.workers.worker import run_in_thread
 class _PathField(QWidget):
     """A line edit + Browse button for a file or directory path."""
 
-    def __init__(self, value: str = "", *, directory: bool, caption: str, parent=None):
+    def __init__(
+        self, value: str = "", *, directory: bool, caption: str, placeholder: str = "", parent=None
+    ):
         super().__init__(parent)
         self._directory = directory
         self._caption = caption
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         self._edit = QLineEdit(value)
+        self._edit.setPlaceholderText(placeholder)
         lay.addWidget(self._edit, 1)
         browse = QPushButton("Browse…")
         browse.clicked.connect(self._browse)
@@ -82,12 +85,14 @@ class SettingsDialog(QDialog):
             str(config.word_list) if config.word_list else "",
             directory=False,
             caption="Word list (.mat)",
+            placeholder="blank → bundled lab word_lst.mat",
         )
         form.addRow("Word list", self._word)
         self._nonword = _PathField(
             str(config.nonword_list) if config.nonword_list else "",
             directory=False,
             caption="Nonword list (.mat)",
+            placeholder="blank → bundled lab nonword_lst.mat",
         )
         form.addRow("Nonword list", self._nonword)
 

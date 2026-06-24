@@ -163,6 +163,13 @@ in development); entries are grouped by the feature branch that delivered them, 
   description as a tooltip). Clicking a quick tag now **replaces** the label name (it no longer appends
   `/CODE`). **Double-click a label** (or press **Enter**) to **edit its name in place** — an inline field
   over the chip that commits on Enter/blur and cancels on Esc (replacing the old rename dialog).
+- **Robust errors + bundled word lists** (`feat/robust-errors-and-bundled-wordlists`): an uncaught
+  exception in a Qt slot used to tear the whole app down. A global `sys.excepthook`
+  (`gui/error_dialog.py`) now turns any unhandled error into a **non-fatal dialog with the traceback**,
+  and a failing pipeline step pops the same dialog (the worker's error is surfaced, not just the red
+  chip). The write-Trials step no longer demands manual configuration: it **defaults to the lab's
+  bundled `word_lst.mat` / `nonword_lst.mat`** (vendored under `core/rpcode/wordlists/`, mirroring how
+  MATLAB `load`ed them from the path); Settings still lets you point at your own (blank = bundled).
 
 ### Fixed (later)
 
