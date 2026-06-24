@@ -98,6 +98,16 @@ class LabelLane(QObject):
         self.tier_changed.emit()
         self._render()
 
+    def resize_active(self, start: float, end: float) -> None:
+        """Set the active interval's bounds (typed into the toolbar start/end fields)."""
+        if not (0 <= self._active < len(self._intervals)):
+            return
+        iv = self._intervals[self._active]
+        self._intervals[self._active] = Interval(min(start, end), max(start, end), iv.label)
+        self.tier_changed.emit()
+        self._render()
+        self._emit_active()  # refresh the cross-lane highlight + the mirrored selection
+
     # ---- selection / navigation ----
     def select(self, index: int) -> None:
         self._active = index if 0 <= index < len(self._intervals) else -1

@@ -77,8 +77,10 @@ class EditorToolbar(QFrame):
 
         lay.addStretch(1)
 
-        # Editable selection readout: click a field to type a precise start / end (seconds).
-        lay.addWidget(QLabel("sel"))
+        # Editable selection / label readout: click a field to type a precise start / end (seconds).
+        self._sel_prefix = QLabel("sel")
+        self._sel_prefix.setFixedWidth(34)
+        lay.addWidget(self._sel_prefix)
         self._sel_start = self._make_time_field("start")
         lay.addWidget(self._sel_start)
         lay.addWidget(QLabel("–"))
@@ -176,8 +178,10 @@ class EditorToolbar(QFrame):
         self.volume_changed.emit(v / 100.0)
         self._vol_val.setText(f"{v / 100:.1f}×")
 
-    def set_selection_text(self, span) -> None:
-        # Don't clobber a field the user is currently typing into.
+    def set_selection_text(self, span, is_label: bool = False) -> None:
+        # ``is_label`` retitles the readout to "label" so the start/end/length refer to the selected
+        # label (editing them retimes it), vs a free "sel" span. Don't clobber a field being edited.
+        self._sel_prefix.setText("label" if (is_label and span is not None) else "sel")
         if span is None:
             if not self._sel_start.hasFocus():
                 self._sel_start.clear()
