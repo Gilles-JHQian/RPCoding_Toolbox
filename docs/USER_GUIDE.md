@@ -33,9 +33,10 @@ Settings are saved immediately and applied to the currently selected subject.
 1. Pick a **Task** (top-left). The **◑** button toggles the light/dark theme.
 2. **Scan subjects** lists the `D<number>` / `S<number>` folders under `D_Data/<task>`. Each is
    checkable; uncheck any you want to exclude from a batch run — the header shows
-   **"N found · K selected"**. Use the **filter** box to narrow the list, and **＋ / －** to add a
-   subject by ID (typed in the filter box) or remove the selected one. **Save list** remembers the
-   checked subjects for that task and restores them on the next scan.
+   **"N found · K selected"**. The **checkbox next to "Subjects"** selects / deselects all at once.
+   Use the **filter** box to narrow the list, and **＋ / －** to add a subject by ID (typed in the
+   filter box) or remove the selected one. **Save list** remembers the checked subjects for that task
+   and restores them on the next scan.
 3. Select a subject to see its **pipeline status** — one row per step with a state chip:
    - `Not started` · `Blocked` (waiting on an upstream step) · `Needs manual` · `Done` ·
      `Stale` (an upstream output changed since this step ran) · `Error`.
