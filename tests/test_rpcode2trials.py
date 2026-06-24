@@ -189,3 +189,31 @@ def test_real_rpcode_nodelay_golden(subject):
         assert out[t]["StimCue"] == saved[t]["StimCue"], f"trial {t + 1} StimCue"
         for num in ("StimEnd_mfa", "ResponseStart", "ResponseEnd"):
             assert out[t][num] == pytest.approx(saved[t][num], abs=1e-2), f"trial {t + 1} {num}"
+
+
+def test_save_trials_writes_struct_array_not_cell(tmp_path):
+    import numpy as np
+    import scipy.io as sio
+
+    from rpcoding.core.matio import load_trials
+    from rpcoding.core.rpcode.rpcode2trials import save_trials
+
+    trials = [
+        {"Start": 1.0, "Auditory": 30000.0, "Cue_Tag": "Cue/x/CORRECT"},
+        {"Start": 2.0, "Auditory": 60000.0, "Cue_Tag": "Cue/y/CORRECT"},
+    ]
+    out = tmp_path / "Trials.mat"
+    save_trials(out, trials)
+
+    # No simplify_cells: a MATLAB struct array keeps named fields (dtype.names); a cell array of
+    # structs round-trips as a plain object dtype (names is None) — that was the bug.
+    raw = sio.loadmat(str(out))
+    T = raw["Trials"]
+    assert T.dtype.names is not None, "Trials must be a struct array, not a cell array"
+    assert set(T.dtype.names) >= {"Start", "Auditory", "Cue_Tag"}
+    assert T.shape == (1, 2)
+    assert float(np.asarray(T["Auditory"][0, 1]).ravel()[0]) == 60000.0
+
+    # …and it still round-trips through our normalising loader.
+    back = load_trials(out)
+    assert [t["Cue_Tag"] for t in back] == ["Cue/x/CORRECT", "Cue/y/CORRECT"]

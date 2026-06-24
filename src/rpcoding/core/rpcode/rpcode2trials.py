@@ -165,10 +165,29 @@ def rpcode_to_trials(
 
 
 def save_trials(path: Path | str, trials: list[dict]) -> None:
-    """Write trials as ``Trials.mat`` (variable ``Trials``, a struct array)."""
-    arr = np.empty((1, len(trials)), dtype=object)
+    """Write ``trials`` as ``Trials.mat`` — a 1xN MATLAB **struct array**, like the MATLAB pipeline.
+
+    A struct array (not a *cell array of structs*) requires a numpy **structured** dtype with named
+    fields: an ``object`` array of dicts round-trips through scipy as a cell array instead (and is
+    bigger, since every cell re-stores the field names).
+    """
+    n = len(trials)
+    if n == 0:
+        save_mat(path, {"Trials": np.zeros((0, 0))})  # MATLAB []
+        return
+    # Field order = first trial's fields, then any extra fields later trials introduce (union).
+    fields: list[str] = []
+    seen: set[str] = set()
+    for t in trials:
+        for k in t:
+            if k not in seen:
+                seen.add(k)
+                fields.append(k)
+    arr = np.empty((1, n), dtype=[(f, object) for f in fields])
+    empty = np.zeros((0, 0))  # MATLAB [] for a field a given trial happens not to have
     for i, t in enumerate(trials):
-        arr[0, i] = t
+        for f in fields:
+            arr[0, i][f] = t.get(f, empty)
     save_mat(path, {"Trials": arr})
 
 
@@ -188,7 +207,14 @@ def generate_trials(
     """Load inputs, run rpcode_to_trials, back up Trials_org.mat, and write Trials.mat in place."""
     results_dir = Path(results_dir)
     trials_mat = Path(trials_mat)
-    trials = load_trials(trials_mat)
+    # Mirror MATLAB: a re-run starts from the untouched original (Trials_org.mat) so the step is
+    # idempotent; on the first run the current Trials.mat *is* the original, so back it up first.
+    org = trials_mat.with_name("Trials_org.mat")
+    if org.exists():
+        trials = load_trials(org)
+    else:
+        trials = load_trials(trials_mat)
+        save_trials(org, trials)
     stim_code = list(read_tier(results_dir / "mfa" / "mfa_stim_words.txt").intervals)
     if task == Task.LEXICAL_DELAY:
         response_code = _read_intervals(results_dir / "bsliang_resp_words.txt")
@@ -207,8 +233,5 @@ def generate_trials(
         task=task,
         error_code=error_code,
     )
-    org = trials_mat.with_name("Trials_org.mat")
-    if not org.exists():
-        save_trials(org, trials)
     save_trials(trials_mat, result)
     return result
