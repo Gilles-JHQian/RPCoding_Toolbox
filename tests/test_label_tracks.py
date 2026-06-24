@@ -358,6 +358,51 @@ def test_undo_redo(qtbot):
     assert len(resp.intervals()) == 1
 
 
+def test_undo_does_not_corrupt_a_focused_readonly_lane(qtbot):
+    # Regression: undo must target the editable tier, not whichever lane has Tab focus. Focusing the
+    # read-only cue lane and pressing Ctrl+Z used to overwrite it with the editable tier's snapshot.
+    ed = _multi_tier_editor(qtbot)  # cue (read-only) + response (editable, has r1 @ 3-4)
+    resp = ed._editable_lane
+    cue = ed._label_lanes[0]
+    assert cue.name == "cue_events"
+
+    ed.set_selection((7.0, 8.0))
+    ed._create_label_from_selection()
+    assert len(resp.intervals()) == 2  # r1 + the new label
+    cue_before = [(iv.start, iv.end, iv.label) for iv in cue.intervals()]
+
+    ed._focus_lane = cue  # focus the read-only cue track (what a click does)
+    ed._select_only(cue)
+    ed._undo()
+
+    assert len(resp.intervals()) == 1  # editable tier was undone …
+    cue_after = [(iv.start, iv.end, iv.label) for iv in cue.intervals()]
+    assert cue_after == cue_before  # … and the focused cue tier is untouched
+
+
+def test_tab_navigation_sets_follow_suspended(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", [Interval(1, 2, "a"), Interval(5, 6, "b")]), True)])
+    assert not ed._follow_suspended
+    ed._navigate(1)
+    assert ed._follow_suspended  # a Tab scroll overrides the playback auto-follow
+
+
+def test_follow_respects_tab_suspension(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_tiers([("response", Tier("response", [Interval(50, 51, "b")]), True)])
+    ed.set_visible_range(40.0, 50.0)
+    base = ed.visible_range()
+    ed._follow_suspended = True
+    ed._follow(base[0] - 100.0)  # playhead behind the view -> must NOT yank back
+    assert ed.visible_range() == base
+    assert ed._follow_suspended
+    ed._follow((base[0] + base[1]) / 2.0)  # playhead drifts back into view -> resume following
+    assert not ed._follow_suspended
+
+
 def test_resize_selection_region(qtbot):
     ed = AudioEditor(DARK_THEME)
     qtbot.addWidget(ed)

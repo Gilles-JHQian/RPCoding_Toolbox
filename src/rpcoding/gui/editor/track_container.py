@@ -229,6 +229,9 @@ class AudioEditor(QWidget):
         self._play_timer = QTimer(self)
         self._play_timer.setInterval(30)
         self._play_timer.timeout.connect(self._update_playhead)
+        # When the user Tabs to a label during playback, that scroll should win over the playhead
+        # auto-follow. We suspend following until the playhead drifts back into the visible window.
+        self._follow_suspended = False
 
     # ---- layout ----
     def _add_row(self, height: int, axis: dict | None = None, viewbox=None) -> pg.PlotItem:
@@ -381,6 +384,7 @@ class AudioEditor(QWidget):
         if self._player.is_playing():
             self._toolbar.set_playing(True)
             self.set_cursor(start)  # the cursor doubles as the playhead
+            self._follow_suspended = False  # a fresh play follows the playhead again
             self._play_timer.start()
 
     def _update_playhead(self) -> None:
@@ -392,7 +396,16 @@ class AudioEditor(QWidget):
         """Page the view forward so the playhead stays visible during playback."""
         t0, t1 = self.visible_range()
         width = t1 - t0
-        if width > 0 and (pos > t1 - 0.02 * width or pos < t0):
+        if width <= 0:
+            return
+        if self._follow_suspended:
+            # A Tab navigation scrolled the view away on purpose. Don't yank it back to the
+            # playhead; resume following only once playback drifts into the visible window again.
+            if t0 <= pos <= t1:
+                self._follow_suspended = False
+            else:
+                return
+        if pos > t1 - 0.02 * width or pos < t0:
             lo = max(pos - 0.1 * width, 0.0)
             self.set_visible_range(lo, lo + width)
 
@@ -604,6 +617,7 @@ class AudioEditor(QWidget):
         iv = self._focus_lane.select_step(step)
         if iv is not None:
             self._center_on(iv.start, iv.end)
+            self._follow_suspended = True  # this scroll wins over the playback auto-follow
 
     def _move_focus(self, step: int) -> None:
         """Up / Down: move the focused track (so Tab then steps through that track's labels)."""
@@ -741,13 +755,17 @@ class AudioEditor(QWidget):
         self._editable_lane.create(start, start + dur, self._clipboard.label)
 
     # ---- undo / redo (state-history of the editable tier) ----
+    # Undo always targets the *editable* lane, never the merely-focused one: only the editable tier
+    # can be mutated, so its snapshots are the only valid history. Keying off _focus_lane was a bug:
+    # focusing a read-only lane (e.g. cue) and pressing Ctrl+Z restored an editable-tier snapshot
+    # into that lane, replacing its contents.
     def _snapshot(self) -> list[Interval]:
-        if self._focus_lane is None:
+        if self._editable_lane is None:
             return []
-        return [Interval(iv.start, iv.end, iv.label) for iv in self._focus_lane.intervals()]
+        return [Interval(iv.start, iv.end, iv.label) for iv in self._editable_lane.intervals()]
 
     def _record_history(self) -> None:
-        if self._restoring or self._focus_lane is None:
+        if self._restoring or self._editable_lane is None:
             return
         snap = self._snapshot()
         if self._undo_stack and snap == self._undo_stack[self._undo_idx]:
@@ -767,12 +785,12 @@ class AudioEditor(QWidget):
             self._restore(self._undo_stack[self._undo_idx])
 
     def _restore(self, snap: list[Interval]) -> None:
-        if self._focus_lane is None:
+        if self._editable_lane is None:
             return
         self._restoring = True
         try:
             copy = [Interval(iv.start, iv.end, iv.label) for iv in snap]
-            self._focus_lane.set_tier(Tier(self._focus_lane.name, copy))
+            self._editable_lane.set_tier(Tier(self._editable_lane.name, copy))
         finally:
             self._restoring = False
         self._select_only(None)
