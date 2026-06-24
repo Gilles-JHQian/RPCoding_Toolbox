@@ -24,6 +24,7 @@ class WaveformLane(QObject):
         self._fs = 1
         self._wav: str | None = None
         self._gain = 1.0
+        self._peak = 1.0  # signal peak amplitude; the Y range auto-fits to it on load
 
         self._top = pg.PlotCurveItem()
         self._bot = pg.PlotCurveItem()
@@ -42,6 +43,14 @@ class WaveformLane(QObject):
         self._pyr = pyr
         self._fs = pyr.fs or 1
         self._wav = str(wav_path) if wav_path else None
+        # Auto-scale the amplitude to a high percentile of the per-bin peak (level 0), not the
+        # absolute max — so a rare full-scale click doesn't leave normal speech a flat line.
+        if pyr.levels:
+            bin_peak = np.abs(pyr.levels[0]).max(axis=1)
+            self._peak = max(float(np.percentile(bin_peak, 99.5)), 1e-3)
+        else:
+            self._peak = 1.0
+        self.set_gain(self._gain)
 
     def set_view(self, t0: float, t1: float, px: int) -> None:
         if self._pyr is None:
@@ -78,7 +87,8 @@ class WaveformLane(QObject):
 
     def set_gain(self, gain: float) -> None:
         self._gain = max(float(gain), 1e-3)
-        self.plot.setYRange(-1.0 / self._gain, 1.0 / self._gain, padding=0)
+        half = self._peak * 1.1 / self._gain  # fit the peak (+10% headroom), then the slider zooms
+        self.plot.setYRange(-half, half, padding=0)
 
     def apply_theme(self, theme: Theme) -> None:
         stroke = theme.color("wave-stroke")

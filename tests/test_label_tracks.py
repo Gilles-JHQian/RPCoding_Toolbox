@@ -185,6 +185,19 @@ def test_audio_click_sets_cursor(qtbot):
     assert ed.selection() == (1.0, 2.0)
 
 
+def test_editable_selection_readout(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.set_selection((1.0, 2.0))
+    assert ed._toolbar._sel_start.text() == "1.000"
+    assert ed._toolbar._sel_end.text() == "2.000"
+    # typing a precise start/end updates the selection
+    ed._toolbar._sel_start.setText("3.5")
+    ed._toolbar._sel_end.setText("4.25")
+    ed._toolbar._emit_selection_edit()
+    assert ed.selection() == (3.5, 4.25)
+
+
 def test_clipboard_copy_paste(qtbot):
     ed = AudioEditor(DARK_THEME)
     qtbot.addWidget(ed)

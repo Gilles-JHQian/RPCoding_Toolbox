@@ -35,30 +35,37 @@ def test_config_word_lists_default_none(tmp_path):
     assert AppConfig.from_dict(d).word_list is None
 
 
+# Both manual steps share one unified lane layout (first stim, condition, cue, response).
+_UNIFIED = ["first_stims", "condition_events", "cue_events", "response"]
+
+
 def test_tiers_for_step_first_stims(tmp_path):
     specs, save_path = tiers_for_step(tmp_path, Step.MARK_FIRST_STIMS)
     assert save_path == tmp_path / "first_stims.txt"
-    assert [(name, editable) for name, _t, editable in specs] == [("first_stims", True)]
-    # missing file -> empty editable tier
-    assert specs[0][1].intervals == []
+    assert [name for name, _t, _e in specs] == _UNIFIED
+    # only first_stims is editable on this step
+    assert [name for name, _t, e in specs if e] == ["first_stims"]
 
 
 def test_tiers_for_step_response_coding(tmp_path):
     write_tier(Tier("cue", [Interval(1, 2, "1_casef.wav")]), tmp_path / "cue_events.txt")
     write_tier(Tier("cond", [Interval(1, 1.5, "1_Yes/No")]), tmp_path / "condition_events.txt")
-    write_tier(Tier("s", [Interval(1, 2, "casef")]), tmp_path / "mfa" / "mfa_stim_words.txt")
     write_tier(Tier("r", [Interval(3, 4, "1_no")]), tmp_path / "bsliang_resp_words_errors.txt")
 
     specs, save_path = tiers_for_step(tmp_path, Step.RESPONSE_CODING)
     assert save_path == tmp_path / "bsliang_resp_words_errors.txt"
-    names = [name for name, _t, _e in specs]
-    assert names[:2] == ["cue_events", "condition_events"]
-    assert "mfa_stim_words" in names
-    # exactly one editable tier, the response tier, and it comes last
-    editable = [name for name, _t, e in specs if e]
-    assert editable == ["response"] and names[-1] == "response"
-    resp_tier = specs[-1][1]
-    assert resp_tier.intervals[0].label == "1_no"  # pre-existing content loaded back
+    assert [name for name, _t, _e in specs] == _UNIFIED
+    # only the response tier is editable, and it loaded the saved coding
+    assert [name for name, _t, e in specs if e] == ["response"]
+    assert specs[-1][1].intervals[0].label == "1_no"
+
+
+def test_response_tier_falls_back_to_mfa(tmp_path):
+    # no saved coding yet -> the response lane starts from the MFA-aligned response words
+    write_tier(Tier("r", [Interval(3, 4, "no")]), tmp_path / "mfa" / "mfa_resp_words.txt")
+    specs, _save = tiers_for_step(tmp_path, Step.RESPONSE_CODING)
+    resp = next(t for name, t, _e in specs if name == "response")
+    assert [iv.label for iv in resp.intervals] == ["no"]
 
 
 def test_tiers_for_step_rejects_auto_step(tmp_path):

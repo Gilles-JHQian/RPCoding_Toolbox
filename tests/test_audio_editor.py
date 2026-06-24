@@ -12,7 +12,7 @@ from PySide6.QtCore import QPointF, Qt
 
 from rpcoding.gui.editor import AudioEditor
 from rpcoding.gui.editor.interactive_viewbox import InteractiveViewBox
-from rpcoding.gui.editor.track_container import _LANE_H, _RULER_H
+from rpcoding.gui.editor.track_container import _RULER_H, _WAVE_H
 from rpcoding.gui.theme import DARK_THEME, LIGHT_THEME
 
 
@@ -61,7 +61,7 @@ def test_editor_constructs(qtbot):
     ed = AudioEditor(DARK_THEME)
     qtbot.addWidget(ed)
     assert ed.waveform is not None and ed.spectrogram is not None
-    assert ed._wave_plot.maximumHeight() == _LANE_H
+    assert ed._wave_plot.maximumHeight() == _WAVE_H
     assert ed._ruler.maximumHeight() == _RULER_H
 
 
@@ -79,7 +79,8 @@ def test_amplitude_scale_pure_y(qtbot):
     qtbot.addWidget(ed)
     ed.set_amplitude_scale(2.0)
     y0, y1 = ed._wave_plot.getViewBox().viewRange()[1]
-    assert abs(y0 + 0.5) < 1e-6 and abs(y1 - 0.5) < 1e-6  # +/- 1/gain
+    # +/- peak*1.1/gain; default peak 1.0 -> +/-0.55
+    assert abs(y0 + 0.55) < 1e-6 and abs(y1 - 0.55) < 1e-6
 
 
 def test_add_label_lane(qtbot):
