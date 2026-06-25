@@ -1,5 +1,9 @@
 name: sentence_repetition
 
+# NOTE: at runtime the app overrides this with an absolute path derived from the configured
+# data root (see rpcoding.core.mfa.runner.resolve_stim_dir) — backslashes and the literal
+# 'Box' folder name only work on Windows. This hardcoded path is a legacy fallback; editing
+# it is normally unnecessary.
 stim_dir: 'Box\CoganLab\ECoG_Task_Data\Stim\SentenceRep\SentenceRep_Stim\mfa\stim_annotations'
 
 # maximum duration of window to provide to mfa in seconds (reduces duration of end of block response windows)
