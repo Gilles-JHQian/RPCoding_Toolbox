@@ -74,14 +74,24 @@ def _make_events(s: SubjectSession, report: Reporter | None = None) -> None:
     r(1.0, "Wrote cue + condition events")
 
 
-# bsliang_mfa_pipeline.py prints these phase banners on stdout; map the ones we recognise to a
-# coarse fraction so the bar advances. Unrecognised lines still surface live as the message.
+# The pipeline + the MFA aligner print these phase banners on stdout/stderr; map the ones we
+# recognise to a coarse fraction so the bar advances through the long run. Order matters only for
+# readability — each line bumps to the highest matching fraction. Unrecognised lines still surface
+# live as the message (so even un-mapped MFA logging shows the run is alive). Checked most-specific
+# first within a phase so e.g. "generating alignments" wins over a generic "generating".
 _MFA_MARKS: tuple[tuple[str, float, str], ...] = (
-    ("annotating stimuli", 0.15, "Annotating stimuli…"),
-    ("preparing patient", 0.30, "Preparing files for MFA…"),
+    ("annotating stimuli", 0.12, "Annotating stimuli (loading from Box)…"),
+    ("preparing patient", 0.28, "Preparing files for MFA…"),
+    ("setting up corpus", 0.40, "Setting up the alignment corpus…"),
+    ("generating base features", 0.48, "Generating acoustic features…"),
+    ("generating mfcc", 0.48, "Generating acoustic features…"),
+    ("calculating cmvn", 0.52, "Normalising features…"),
     ("mfa align", 0.45, "Running forced alignment…"),
-    ("generating alignments", 0.60, "Generating alignments…"),
-    ("exporting", 0.85, "Exporting alignments…"),
+    ("generating alignments", 0.62, "Generating alignments…"),
+    ("collecting phone", 0.70, "Collecting aligned phones…"),
+    ("exporting files", 0.82, "Exporting alignments…"),
+    ("exporting", 0.82, "Exporting alignments…"),
+    ("done! everything took", 0.88, "Alignment done; writing labels…"),
     ("finished processing", 1.0, "MFA complete"),
 )
 

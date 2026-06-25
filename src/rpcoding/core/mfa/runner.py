@@ -111,6 +111,10 @@ def _subprocess_env(python_exe: str | None) -> dict[str, str]:
     parts = env.get("PATH", "").split(os.pathsep)
     if bin_dir not in parts:
         env["PATH"] = os.pathsep.join([bin_dir, *parts]) if parts != [""] else bin_dir
+    # Force unbuffered stdout/stderr: when the pipeline's output is a pipe (not a tty) Python
+    # block-buffers it, so the GUI gets nothing until the process exits and the progress bar can't
+    # move. Unbuffering streams each phase banner / MFA log line live so the bar can advance.
+    env["PYTHONUNBUFFERED"] = "1"
     return env
 
 
