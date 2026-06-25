@@ -201,6 +201,20 @@ in development); entries are grouped by the feature branch that delivered them, 
 
 ### Fixed (later)
 
+- **Editor showed the MFA-denoised audio with the option off** (`fix/mfa-macos-response-phase`):
+  once MFA actually completed (above), `prepareForMFA` denoises `allblocks.wav` in place and backs
+  up the pre-denoise audio as `allblocks_original.wav` — so a stale `editor_use_processed_audio:
+  true` in the saved config finally took effect and the spectrogram showed the denoised signal. The
+  editor's audio selection is hardened (`_editor_wav`: cloud-safe `exists`, clearer fallback) so with
+  the option **off** it loads `allblocks_original.wav` (the raw signal), falling back to
+  `allblocks.wav` only when MFA never denoised it.
+- **MFA progress bar now actually moves** (`fix/mfa-macos-response-phase`): the pipeline's stdout was
+  block-buffered when piped, so the GUI received nothing until the process exited — the bar sat
+  indeterminate the whole run then snapped to full. `PYTHONUNBUFFERED=1` streams each line live; the
+  phase map gained the aligner's stages (corpus setup → features → alignment → export → write
+  labels); and the running step row shows a 1 Hz elapsed clock, so the long, output-less
+  stimulus-loading phase (reading hundreds of annotation files from Box) visibly ticks instead of
+  looking frozen.
 - **MFA response-alignment phase failed on macOS/Linux** (`fix/mfa-macos-response-phase`): two more
   Windows-only assumptions in the vendored pipeline, found after the `stim_dir` fix let the run get
   further. (1) `run_resp` opened `merged_stim_times.txt.` with a **trailing dot** — Windows strips
