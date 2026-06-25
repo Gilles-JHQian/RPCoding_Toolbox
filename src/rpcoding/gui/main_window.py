@@ -58,18 +58,32 @@ class MainWindow(QMainWindow):
         self._editor.set_tiers(specs)
         self._editor.set_response_tags(response_tags(session.task))  # per-task quick-tag palette
         self._editor.configure_save(save_path)
-        # After MFA has denoised allblocks.wav in place, prefer the preserved original unless the
-        # user opted into the processed audio (Settings → MFA).
-        wav = session.output_path(paths.ALLBLOCKS_WAV)
-        original = session.output_path(paths.ALLBLOCKS_ORIGINAL_WAV)
-        if not session.config.editor_use_processed_audio and original.exists():
-            wav = original
-        if wav.exists():
+        wav = self._editor_wav(session)
+        if wav is not None:
             self._editor.load(wav, session.results_dir / ".rpcoding" / "cache")
         self._editor.show()
         self._editor.raise_()
         self._editor.activateWindow()
         self._editor.setFocus()
+
+    @staticmethod
+    def _exists(p) -> bool:
+        """``p.exists()`` that treats an un-stat-able cloud placeholder (OSError) as absent."""
+        try:
+            return p.exists()
+        except OSError:
+            return False
+
+    def _editor_wav(self, session):
+        """Which audio the editor should load. MFA denoises allblocks.wav in place and keeps the
+        pre-denoise audio as allblocks_original.wav; unless the user explicitly opts into the
+        processed audio (Settings → MFA), load that original so the spectrogram shows the raw
+        signal. Falls back to allblocks.wav (which *is* the original when MFA never denoised it)."""
+        allblocks = session.output_path(paths.ALLBLOCKS_WAV)
+        original = session.output_path(paths.ALLBLOCKS_ORIGINAL_WAV)
+        if not session.config.editor_use_processed_audio and self._exists(original):
+            return original
+        return allblocks if self._exists(allblocks) else None
 
     def _on_editor_saved(self) -> None:
         if self._editing is None:
