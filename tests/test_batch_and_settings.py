@@ -26,7 +26,7 @@ def test_settings_roundtrip(qtbot, tmp_path):
     assert out.nonword_list == tmp_path / "nonword_lst.mat"
     # default task map preserved
     assert out.mfa_task(Task.LEXICAL_NODELAY) == "lexical_repeat_no_delay"
-    assert out.mfa_task(Task.UNIQUENESS_POINT) is None
+    assert out.mfa_task(Task.UNIQUENESS_POINT) == "uniqueness_point"
 
 
 def test_settings_edit_word_list_and_task(qtbot, tmp_path):

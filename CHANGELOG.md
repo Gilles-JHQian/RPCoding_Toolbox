@@ -74,6 +74,25 @@ in development); entries are grouped by the feature branch that delivered them, 
   bar; a fine-grained footer bar tracks overall progress (subjects done + the running subject's
   within-pipeline fraction) instead of just whole-subject counts.
 
+### Uniqueness Point — MFA support (`feat/uniqueness-point-mfa`)
+
+First steps toward running the pipeline on the Uniqueness Point (UP) task; this enables **MFA** on
+UP (downstream `rpcode2trials` / word-lists are still lexical-only and come later).
+
+- **Custom pronunciation dictionary.** UP's 40 nonwords are pseudowords absent from
+  `english_us_arpa`, so MFA couldn't align the responses. `core/mfa/up_dict.py` assembles
+  `english_us_up.dict` (80 tokens) straight from each token's existing `*_phones.txt` ARPABET
+  annotation — robust to the files' inconsistent format (some carry a word-level row, some don't).
+  The dict is vendored and auto-installs via the existing `*.dict` glob (re-run the Settings MFA
+  install, or `python -m rpcoding.core.mfa.models --ensure-models`).
+- **Task config `uniqueness_point.yaml`** wired into the task map (`Uniqueness_Point →
+  uniqueness_point`). `mark_yes_no: False` (Yes/No is a button press in UP; only Repeat responses
+  are aligned).
+- **Nested stim annotations.** UP stores each token's annotations in its own subfolder
+  (`stim_annotations/<token>/<token>_{words,phones}.txt`) rather than flat. A `stim_nested` task
+  flag makes `loadAnnotsToDict` look one level deeper — **UP-only**, lexical tasks read flat as
+  before. (Marked TODO: remove once the dataset is flattened.)
+
 ### Editor performance & interaction (`fix/editor-performance`, `fix/editor-interaction`)
 
 - **Label virtualization:** only the labels in view are rendered (recycled pool, capped); the

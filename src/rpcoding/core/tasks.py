@@ -18,13 +18,11 @@ class Task(StrEnum):
         return cls(value)
 
 
-# Default app-task -> MFA pipeline task-config name (conf/task/<name>.yaml).
-# Configurable/extensible: Uniqueness_Point's config is supplied by the user later, so it maps
-# to None until then.
+# Default app-task -> MFA pipeline task-config name (conf/task/<name>.yaml); configurable.
 DEFAULT_MFA_TASK_MAP: dict[Task, str | None] = {
     Task.LEXICAL_NODELAY: "lexical_repeat_no_delay",
     Task.LEXICAL_DELAY: "lexical_repeat",
-    Task.UNIQUENESS_POINT: None,
+    Task.UNIQUENESS_POINT: "uniqueness_point",
 }
 
 # The raw-acquisition tree (Cogan_Task_Data) uses human-readable folder names with spaces,

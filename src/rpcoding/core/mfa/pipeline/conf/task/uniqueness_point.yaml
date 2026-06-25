@@ -1,0 +1,20 @@
+name: uniqueness_point
+
+stim_dir: 'Box\CoganLab\ECoG_Task_Data\Stim\UniquenessPoint\mfa\stim_annotations'
+
+# Uniqueness Point keeps each token's stim annotations in its own subfolder
+# (stim_annotations/<token>/<token>_{words,phones}.txt) instead of flat like the other tasks.
+# This flag makes loadAnnotsToDict also search one level deeper.
+# TODO(uniqueness-point): drop this once the dataset's stim_annotations are flattened.
+stim_nested: True
+
+# maximum duration of window to provide to mfa in seconds (reduces duration of end of block response windows)
+max_dur: 7.0
+
+# Yes/No is a button press in UP (no spoken yes/no to align); only Repeat responses are aligned.
+mark_yes_no: False
+
+##### MFA settings #####
+mfa:
+  dict: 'english_us_up'
+  acoustic: 'english_us_arpa'

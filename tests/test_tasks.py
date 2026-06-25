@@ -17,4 +17,4 @@ def test_map_covers_all_tasks():
     assert set(DEFAULT_MFA_TASK_MAP) == set(Task)
     assert DEFAULT_MFA_TASK_MAP[Task.LEXICAL_NODELAY] == "lexical_repeat_no_delay"
     assert DEFAULT_MFA_TASK_MAP[Task.LEXICAL_DELAY] == "lexical_repeat"
-    assert DEFAULT_MFA_TASK_MAP[Task.UNIQUENESS_POINT] is None
+    assert DEFAULT_MFA_TASK_MAP[Task.UNIQUENESS_POINT] == "uniqueness_point"
