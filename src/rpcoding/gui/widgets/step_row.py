@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import html as _html
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QElapsedTimer, QTimer, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -41,7 +41,7 @@ class StepRow(QWidget):
         self._step = step
         self._spec = STEP_SPECS[step]
         self._state = EffectiveState.NOT_STARTED
-        self._last: tuple = (EffectiveState.NOT_STARTED, "", None)
+        self._last: tuple = (EffectiveState.NOT_STARTED, "", None, False)
         self._manual = self._spec.kind == StepKind.MANUAL
 
         lay = QHBoxLayout(self)
@@ -99,6 +99,14 @@ class StepRow(QWidget):
         self._btn.clicked.connect(lambda: self.action.emit(self._step))
         lay.addWidget(self._btn)
 
+        # A 1 Hz elapsed-time clock so a long, quiet phase (e.g. MFA reading hundreds of stimulus
+        # files from Box) visibly ticks instead of looking frozen.
+        self._phase_msg = ""
+        self._run_clock = QElapsedTimer()
+        self._clock_timer = QTimer(self)
+        self._clock_timer.setInterval(1000)
+        self._clock_timer.timeout.connect(self._render_status)
+
         self._render_name(blocked=False)
 
     @property
@@ -122,6 +130,15 @@ class StepRow(QWidget):
                 f"color: {purple}; font-size: 11px; background: transparent;"
             )
 
+    def _render_status(self) -> None:
+        """Show the latest phase message plus a live elapsed clock while the step runs."""
+        if not self._run_clock.isValid():
+            self._status.setText(self._phase_msg)
+            return
+        secs = self._run_clock.elapsed() // 1000
+        clock = f"{secs // 60}:{secs % 60:02d}" if secs >= 60 else f"{secs}s"
+        self._status.setText(f"{self._phase_msg} · {clock}" if self._phase_msg else clock)
+
     def set_running(self) -> None:
         self._dot.set_running()
         self._chip.set_running()
@@ -132,7 +149,10 @@ class StepRow(QWidget):
         self._meta.setVisible(False)
         self._prog_row.setVisible(True)
         self._progress.setRange(0, 0)
-        self._status.setText("Starting…")
+        self._phase_msg = "Starting…"
+        self._run_clock.restart()
+        self._clock_timer.start()
+        self._render_status()
 
     def set_progress(self, fraction: float | None, message: str) -> None:
         """Update the inline bar while the step runs. ``fraction`` None = indeterminate (busy)."""
@@ -144,13 +164,27 @@ class StepRow(QWidget):
             self._progress.setRange(0, 100)
             pct = 0 if fraction < 0 else 100 if fraction > 1 else int(round(fraction * 100))
             self._progress.setValue(pct)
-        self._status.setText(message[:60] if message else "")
+        if message:
+            self._phase_msg = message[:60]
+        self._render_status()
 
-    def set_state(self, state: EffectiveState, meta: str = "", error: str | None = None) -> None:
+    def set_state(
+        self,
+        state: EffectiveState,
+        meta: str = "",
+        error: str | None = None,
+        log_available: bool = False,
+    ) -> None:
         self._state = state
-        self._last = (state, meta, error)
+        self._last = (state, meta, error, log_available)
+        self._clock_timer.stop()  # the step is no longer running; freeze the elapsed clock
         self._dot.set_state(state)
-        self._chip.set_state(state, detail=error if state == EffectiveState.ERROR else None)
+        # The chip is clickable when there's an error detail OR a run log to show (e.g. MFA).
+        self._chip.set_state(
+            state,
+            detail=error if state == EffectiveState.ERROR else None,
+            clickable=log_available,
+        )
         # Back to the static meta line; hide the (now finished) progress bar.
         self._prog_row.setVisible(False)
         self._meta.setVisible(True)

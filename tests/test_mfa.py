@@ -10,6 +10,7 @@ from rpcoding.core.mfa import models as mfa_models
 from rpcoding.core.mfa.ingest import ingest_mfa_tiers
 from rpcoding.core.mfa.models import install_custom_dicts, mfa_status
 from rpcoding.core.mfa.runner import (
+    PIPELINE_DIR,
     build_mfa_command,
     resolve_stim_dir,
     run_mfa,
@@ -64,6 +65,15 @@ def test_resolve_stim_dir_rebases_windows_path(tmp_path):
 def test_resolve_stim_dir_missing_config_is_none(tmp_path):
     (tmp_path / "conf" / "task").mkdir(parents=True)
     assert resolve_stim_dir(tmp_path, "no_such_task", pipeline_dir=tmp_path) is None
+
+
+def test_vendored_pipeline_has_no_trailing_dot_path():
+    """Guard the local patch (see mfa/VENDORED.md): the vendored pipeline must read
+    'merged_stim_times.txt', not the trailing-dot form, which only works on Windows (it strips the
+    dot) and breaks the response-alignment phase on macOS/Linux. Re-sync must re-apply this."""
+    src = (PIPELINE_DIR / "mfa_pipeline.py").read_text(encoding="utf-8")
+    assert "merged_stim_times.txt." not in src
+    assert "merged_stim_times.txt" in src  # the correct name is still referenced
 
 
 def test_verify_inputs(tmp_path):

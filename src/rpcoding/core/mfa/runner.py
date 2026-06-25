@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -99,6 +100,24 @@ def verify_inputs(patient_dir: Path | str, patients: str) -> list[Path]:
     return missing
 
 
+def _subprocess_env(python_exe: str | None) -> dict[str, str]:
+    """Env for the pipeline subprocess that can find the ``mfa`` console script even when the conda
+    env isn't activated. The vendored pipeline calls ``mfa`` by bare name (``subprocess.run(['mfa',
+    ...])``), which relies on PATH; launching the GUI without ``conda activate`` (a desktop
+    shortcut, an IDE, a bare ``python`` path) leaves the env's bin off PATH, so ``mfa`` isn't found.
+    Prepend the interpreter's bin dir — where ``mfa`` is installed next to ``python`` — to PATH."""
+    env = os.environ.copy()
+    bin_dir = str(Path(python_exe or sys.executable).parent)
+    parts = env.get("PATH", "").split(os.pathsep)
+    if bin_dir not in parts:
+        env["PATH"] = os.pathsep.join([bin_dir, *parts]) if parts != [""] else bin_dir
+    # Force unbuffered stdout/stderr: when the pipeline's output is a pipe (not a tty) Python
+    # block-buffers it, so the GUI gets nothing until the process exits and the progress bar can't
+    # move. Unbuffering streams each phase banner / MFA log line live so the bar can advance.
+    env["PYTHONUNBUFFERED"] = "1"
+    return env
+
+
 def run_mfa(
     patient_dir: Path | str,
     task_config: str,
@@ -130,7 +149,13 @@ def run_mfa(
     )
     lines: list[str] = []
     proc = subprocess.Popen(
-        cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+        cmd,
+        cwd=str(cwd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        env=_subprocess_env(python_exe),
     )
     assert proc.stdout is not None
     for raw in proc.stdout:

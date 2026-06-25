@@ -23,6 +23,7 @@ class StateChip(QFrame):
         self._theme = theme
         self._state = state
         self._detail: str | None = None
+        self._clickable = False  # clickable even without an error detail (e.g. to show a run log)
         self._running = False
 
         lay = QHBoxLayout(self)
@@ -37,15 +38,19 @@ class StateChip(QFrame):
         lay.addWidget(self._text)
         self.set_state(state)
 
-    def set_state(self, state: EffectiveState, detail: str | None = None) -> None:
+    def set_state(
+        self, state: EffectiveState, detail: str | None = None, clickable: bool = False
+    ) -> None:
         self._running = False
         self._state = state
         self._detail = detail
+        self._clickable = clickable
         self._apply(self._theme.state_color(state), STATE_LABELS.get(state, state.value), detail)
 
     def set_running(self) -> None:
         self._running = True
         self._detail = None
+        self._clickable = False
         self._apply(self._theme.running_color(), RUNNING_LABEL, None)
 
     def _apply(self, color: str, label: str, detail: str | None) -> None:
@@ -57,13 +62,14 @@ class StateChip(QFrame):
         )
         self._text.setText(label)
         self.setToolTip(detail or "")
-        self.setCursor(Qt.CursorShape.PointingHandCursor if detail else Qt.CursorShape.ArrowCursor)
+        hand = bool(detail) or self._clickable
+        self.setCursor(Qt.CursorShape.PointingHandCursor if hand else Qt.CursorShape.ArrowCursor)
 
     def text(self) -> str:
         return self._text.text()
 
     def mousePressEvent(self, event) -> None:  # noqa: N802 - Qt override
-        if self._detail:
+        if self._detail or self._clickable:
             self.clicked.emit()
         super().mousePressEvent(event)
 
@@ -72,4 +78,4 @@ class StateChip(QFrame):
         if self._running:
             self.set_running()
         else:
-            self.set_state(self._state, self._detail)
+            self.set_state(self._state, self._detail, self._clickable)

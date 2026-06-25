@@ -461,15 +461,26 @@ class Dashboard(QWidget):
             self._banner.setText(f"{done} / {len(states)} complete")
             self._banner.setStyleSheet(f"color: {self._theme.color('text-ter')};")
         for step, row in self._rows.items():
-            row.set_state(states[step], self._meta_for(step), self._session.step_error(step))
+            error = self._session.step_error(step)
+            log_available = error is not None or self._step_log_path(step) is not None
+            row.set_state(states[step], self._meta_for(step), error, log_available=log_available)
+
+    def _step_log_path(self, step: Step) -> Path | None:
+        """The on-disk run log for a step, if it writes one (only MFA does), else None."""
+        if self._session is None or step != Step.RUN_MFA:
+            return None
+        log = self._session.results_dir / "mfa_run.log"
+        return log if log.exists() else None
 
     def _meta_for(self, step: Step) -> str:
         rec = self._session.manifest.steps.get(str(step)) if self._session else None
-        if rec is None:
-            return ""
-        if rec.state == "error":
+        if rec is not None and rec.state == "error":
             return "error — click the chip for details"
-        if rec.ran_at:
+        if self._step_log_path(step) is not None:
+            return (f"ran {rec.ran_at[:16].replace('T', ' ')} · " if rec and rec.ran_at else "") + (
+                "click the chip for the run log"
+            )
+        if rec is not None and rec.ran_at:
             return f"ran {rec.ran_at[:16].replace('T', ' ')}"
         return ""
 
@@ -519,15 +530,29 @@ class Dashboard(QWidget):
             row.set_progress(fraction, message)
 
     def _show_error(self, step: Step) -> None:
+        """Chip clicked: show this step's run log (MFA) and/or its recorded error."""
         if self._session is None:
             return
-        message = self._session.step_error(step) or "No error details recorded."
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Icon.Critical)
-        box.setWindowTitle(f"{_SPECS[step].title} — error")
-        box.setText(_SPECS[step].title)
-        box.setInformativeText(message)
-        box.exec()
+        parts: list[str] = []
+        error = self._session.step_error(step)
+        if error:
+            parts.append(f"--- recorded error ---\n{error}")
+        log = self._step_log_path(step)
+        if log is not None:
+            try:
+                body = log.read_text(encoding="utf-8", errors="replace")
+                parts.append(f"--- {log.name} ---\n{body}")
+            except OSError as exc:
+                parts.append(f"(could not read {log.name}: {exc})")
+        text = (
+            "\n\n".join(parts) if parts else "No error details or run log recorded for this step."
+        )
+        LogDialog(
+            f"{_SPECS[step].title} — log",
+            text,
+            folder=self._session.results_dir,
+            parent=self,
+        ).exec()
 
     def _open_batch(self) -> None:
         subjects = self._subjects.checked_subjects()
