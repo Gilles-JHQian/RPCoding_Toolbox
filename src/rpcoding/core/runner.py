@@ -100,6 +100,11 @@ def _mfa_line_progress(line: str, state: dict) -> tuple[float | None, str]:
     return state["frac"], text[:80]
 
 
+def mfa_reported_errors(log: str) -> bool:
+    """True if the vendored MFA pipeline logged per-patient errors (it still exits 0 then)."""
+    return "Errors occurred for the following patients" in log
+
+
 def _run_mfa(s: SubjectSession, report: Reporter | None = None) -> None:
     r = report or noop
     task_config = s.config.mfa_task(s.task)
@@ -123,11 +128,18 @@ def _run_mfa(s: SubjectSession, report: Reporter | None = None) -> None:
         log_path.write_text(result.log, encoding="utf-8")
     except OSError:
         pass
+    tail = "\n".join(result.log.splitlines()[-25:]).strip()
+    detail = f"\n\n--- MFA output (last lines) ---\n{tail}" if tail else ""
     if result.returncode != 0:
-        tail = "\n".join(result.log.splitlines()[-25:]).strip()
-        detail = f"\n\n--- MFA output (last lines) ---\n{tail}" if tail else ""
         raise RuntimeError(
             f"MFA exited with code {result.returncode}. Full log: {log_path}{detail}"
+        )
+    # The vendored pipeline catches per-patient errors, prints them, and still exits 0. Without this
+    # the step would be marked Done with no real alignment output (a silent "Done but empty").
+    if mfa_reported_errors(result.log):
+        raise RuntimeError(
+            f"MFA reported per-patient errors (the pipeline exited 0 but a patient failed). "
+            f"Full log: {log_path}{detail}"
         )
     r(1.0, "MFA complete")
 
