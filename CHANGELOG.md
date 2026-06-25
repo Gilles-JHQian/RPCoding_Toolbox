@@ -220,6 +220,13 @@ UP (downstream `rpcode2trials` / word-lists are still lexical-only and come late
 
 ### Fixed (later)
 
+- **MFA "Done" but empty — a swallowed per-patient failure** (`fix/mfa-per-patient-error`): the
+  vendored MFA pipeline catches a per-patient error, prints `Errors occurred for the following
+  patients`, and still **exits 0**. `_run_mfa` only checked the return code, so a failed subject was
+  marked Done with no real alignment output. It now scans the log for that marker and raises (red
+  chip + log tail) so the failure is visible. (Surfaced on Uniqueness Point D65, where a corrupted
+  stim annotation file — `aelkahhaazh_words.txt` held phone rows — produced more stim entries than
+  trials and crashed `annotateResp` mid-run.)
 - **Undo corrupted a focused read-only lane** (`fix/editor-undo-and-tab-scroll`): undo/redo
   snapshotted and restored `_focus_lane` (whatever track Tab was on) instead of the one editable
   tier. Focusing a read-only track (e.g. cue) and pressing Ctrl+Z overwrote it with the editable

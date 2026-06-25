@@ -83,6 +83,16 @@ def test_install_custom_dicts(tmp_path):
     assert all((tmp_path / n).exists() for n in names)
 
 
+def test_mfa_reported_errors_detects_swallowed_per_patient_failure():
+    from rpcoding.core.runner import mfa_reported_errors
+
+    clean = "##### Running MFA for task: uniqueness_point #####\nFinished processing 1 patients\n"
+    assert not mfa_reported_errors(clean)
+    # The pipeline catches a per-patient error, prints this, and still exits 0 -> must be surfaced.
+    failed = clean + "Errors occurred for the following patients: \n['D65']\n"
+    assert mfa_reported_errors(failed)
+
+
 def test_mfa_status_reflects_install(tmp_path, monkeypatch):
     adir = tmp_path / "acoustic"
     ddir = tmp_path / "dictionary"
