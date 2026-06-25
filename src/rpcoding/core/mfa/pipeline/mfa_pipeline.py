@@ -145,7 +145,7 @@ def run_resp(task_name, pt_path, mfa_path, resp_type, max_dur, mfa_dict,
                                            mfa_path, max_dur,
                                            output_fname=annot_name)
             else:
-                mfa_utils.annotateResp(mfa_path / 'merged_stim_times.txt.',
+                mfa_utils.annotateResp(mfa_path / 'merged_stim_times.txt',
                                     pt_path / 'trialInfo.mat',
                                     recording_dur, mfa_path,
                                     max_dur, method=resp_type,
@@ -191,7 +191,7 @@ def run_resp(task_name, pt_path, mfa_path, resp_type, max_dur, mfa_dict,
                                         mfa_path, max_dur,
                                         output_fname=annot_name)
         else:
-            mfa_utils.annotateResp(mfa_path / 'merged_stim_times.txt.',
+            mfa_utils.annotateResp(mfa_path / 'merged_stim_times.txt',
                                 pt_path / 'trialInfo.mat',
                                 recording_dur, mfa_path,
                                 max_dur, method=resp_type,
