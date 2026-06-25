@@ -196,6 +196,17 @@ def test_file_based_completion_without_manifest(tmp_path):
     assert (done, total) == (7, 9) and rep == EffectiveState.NOT_STARTED
 
 
+def test_empty_mfa_output_is_not_done(tmp_path):
+    """A 0-byte mfa_stim_words.txt is a failed/aborted MFA run — it must not show as DONE."""
+    s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")
+    rd = s.results_dir
+    (rd / paths.MFA_DIRNAME).mkdir(parents=True)
+    for name in (paths.CUE_EVENTS_TXT, paths.CONDITION_EVENTS_TXT):
+        (rd / name).write_bytes(b"x")
+    (rd / paths.MFA_DIRNAME / "mfa_stim_words.txt").write_bytes(b"")  # empty == not produced
+    assert s.effective_state(Step.RUN_MFA) != EffectiveState.DONE
+
+
 def test_disk_presence_overrides_error_record(tmp_path):
     """A leftover error record must not hide a step whose output is present (file = done)."""
     s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")

@@ -34,6 +34,14 @@ def _is_dir(p: Path) -> bool:
         return False
 
 
+def _nonempty(p: Path) -> bool:
+    """A real (non-placeholder) file with content; an empty file is treated as absent."""
+    try:
+        return p.stat().st_size > 0
+    except OSError:
+        return False
+
+
 @dataclass
 class SubjectSession:
     config: AppConfig
@@ -127,8 +135,10 @@ class SubjectSession:
         if step == Step.MAKE_EVENTS:
             return _exists(rd / paths.CUE_EVENTS_TXT) and _exists(rd / paths.CONDITION_EVENTS_TXT)
         if step == Step.RUN_MFA:
+            # An empty mfa_stim_words.txt is a failed/aborted run (the pipeline can leave a 0-byte
+            # file behind), so require real content rather than mere existence.
             mfa = rd / paths.MFA_DIRNAME
-            return _is_dir(mfa) and _exists(mfa / "mfa_stim_words.txt")
+            return _is_dir(mfa) and _nonempty(mfa / "mfa_stim_words.txt")
         if step == Step.RESPONSE_CODING:
             return _exists(rd / paths.RESP_WORDS_ERRORS_TXT) or _exists(rd / "response_coding.txt")
         return None  # DENOISE, WRITE_TRIALS: no reliable on-disk signal

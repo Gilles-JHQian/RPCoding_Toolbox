@@ -9,7 +9,12 @@ import pytest
 from rpcoding.core.mfa import models as mfa_models
 from rpcoding.core.mfa.ingest import ingest_mfa_tiers
 from rpcoding.core.mfa.models import install_custom_dicts, mfa_status
-from rpcoding.core.mfa.runner import build_mfa_command, run_mfa, verify_inputs
+from rpcoding.core.mfa.runner import (
+    build_mfa_command,
+    resolve_stim_dir,
+    run_mfa,
+    verify_inputs,
+)
 
 
 def test_ingest_mfa_tiers(tmp_path):
@@ -33,6 +38,32 @@ def test_build_mfa_command():
     assert "patients=D9" in cmd
     assert "home_dir=/home" in cmd
     assert cwd.name == "pipeline"
+
+
+def _write_task_conf(pdir, name, stim_dir):
+    conf = pdir / "conf" / "task"
+    conf.mkdir(parents=True, exist_ok=True)
+    (conf / f"{name}.yaml").write_text(
+        f"name: {name}\nstim_dir: '{stim_dir}'\nmax_dur: 7.0\n", newline="\n"
+    )
+
+
+def test_resolve_stim_dir_rebases_windows_path(tmp_path):
+    # The vendored configs hardcode a Windows 'Box\...' path; it must re-root onto the real droot
+    # (whose Box mount may be named differently, e.g. 'Box-Box'), with backslashes normalised.
+    _write_task_conf(
+        tmp_path,
+        "lexical_repeat_no_delay",
+        r"Box\CoganLab\ECoG_Task_Data\Stim\Lexical\mfa\stim_annotations",
+    )
+    droot = tmp_path / "Box-Box" / "CoganLab"
+    resolved = resolve_stim_dir(droot, "lexical_repeat_no_delay", pipeline_dir=tmp_path)
+    assert resolved == droot / "ECoG_Task_Data" / "Stim" / "Lexical" / "mfa" / "stim_annotations"
+
+
+def test_resolve_stim_dir_missing_config_is_none(tmp_path):
+    (tmp_path / "conf" / "task").mkdir(parents=True)
+    assert resolve_stim_dir(tmp_path, "no_such_task", pipeline_dir=tmp_path) is None
 
 
 def test_verify_inputs(tmp_path):

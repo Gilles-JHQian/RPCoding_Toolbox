@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -10,7 +11,50 @@ from pathlib import Path
 
 PIPELINE_DIR = Path(__file__).parent / "pipeline"
 PIPELINE_SCRIPT = "mfa_pipeline.py"
+TASK_CONF_SUBDIR = "conf/task"
 REQUIRED_INPUTS = ("allblocks.wav", "cue_events.txt", "trialInfo.mat")
+
+_STIM_DIR_RE = re.compile(r"^\s*stim_dir\s*:\s*(.+?)\s*$")
+
+
+def _configured_stim_dir(task_config: str, pipeline_dir: Path | str | None = None) -> str | None:
+    """The raw ``stim_dir`` value from a task's vendored YAML config (or None if absent)."""
+    pdir = Path(pipeline_dir) if pipeline_dir else PIPELINE_DIR
+    conf = pdir / TASK_CONF_SUBDIR / f"{task_config}.yaml"
+    try:
+        text = conf.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        m = _STIM_DIR_RE.match(line)
+        if m:
+            return m.group(1).strip().strip("'\"") or None
+    return None
+
+
+def resolve_stim_dir(
+    droot: Path | str, task_config: str, *, pipeline_dir: Path | str | None = None
+) -> Path | None:
+    """Absolute stim-annotation dir for ``task_config``, re-rooted onto ``droot`` ($BOX/CoganLab).
+
+    The vendored task YAMLs hardcode a Windows path such as
+    ``Box\\CoganLab\\...\\stim_annotations`` that the pipeline joins to ``home_dir``. Off Windows
+    the backslashes aren't separators, and the Box mount isn't always named literally ``Box`` (it
+    is ``Box-Box`` on macOS), so that join silently points nowhere — MFA finds zero annotations,
+    writes an empty ``mfa_stim_words.txt``, and dies in ``mergeAnnots`` with "list index out of
+    range". We keep only the portion after the last ``CoganLab`` segment and join it under ``droot``
+    (which already resolves to the real ``$BOX/CoganLab``). Returns ``None`` if the task has no
+    ``stim_dir`` configured.
+    """
+    raw = _configured_stim_dir(task_config, pipeline_dir)
+    if not raw:
+        return None
+    parts = [p for p in raw.replace("\\", "/").split("/") if p]
+    lowered = [p.lower() for p in parts]
+    if "coganlab" in lowered:
+        last = max(i for i, p in enumerate(lowered) if p == "coganlab")
+        parts = parts[last + 1 :]
+    return Path(droot).joinpath(*parts)
 
 
 @dataclass

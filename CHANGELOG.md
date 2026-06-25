@@ -201,6 +201,24 @@ in development); entries are grouped by the feature branch that delivered them, 
 
 ### Fixed (later)
 
+- **MFA reported "done" but produced no labels** (`fix/mfa-stim-dir-and-run-visibility`): the
+  vendored task configs hardcode a Windows `stim_dir` (`Box\CoganLab\…\stim_annotations`) that the
+  pipeline joins onto `home_dir`. Off Windows the backslashes aren't path separators, and the Box
+  mount isn't always literally `Box` (it's `Box-Box` on macOS) — so the join pointed nowhere, MFA
+  found zero stim annotations, wrote an empty `mfa_stim_words.txt`, and died in `mergeAnnots` with
+  "list index out of range". But the pipeline catches per-patient errors and **still exits 0**, so
+  the step was recorded *done* with no labels written. Fixed by re-rooting the stim dir onto the
+  real data root (`resolve_stim_dir`: normalises `\`/`/`, keeps the part after `CoganLab`, and
+  passes it as a `task.stim_dir=` override) — verified against all four task configs and unchanged
+  on Windows (same path the old join produced there). `_run_mfa` now also fails loudly on a silent
+  miss — the subject appearing in the pipeline's "Errors occurred" list, or an empty
+  `mfa_stim_words.txt` — and the dashboard no longer counts a 0-byte `mfa_stim_words.txt` as a
+  completed MFA step.
+- **Run-log visibility + quick folder access** (`fix/mfa-stim-dir-and-run-visibility`): MFA runs as
+  a captured subprocess (no terminal window), so the failure above was invisible. The dashboard
+  gained a bottom status bar — click it to open the last run log (`mfa_run.log`, scrolled to the
+  error tail; falls back to the subject's recorded step errors) — plus a **📂 Open results folder**
+  button that reveals the current subject's response-coding results folder in the OS file manager.
 - **Undo corrupted a focused read-only lane** (`fix/editor-undo-and-tab-scroll`): undo/redo
   snapshotted and restored `_focus_lane` (whatever track Tab was on) instead of the one editable
   tier. Focusing a read-only track (e.g. cue) and pressing Ctrl+Z overwrote it with the editable
