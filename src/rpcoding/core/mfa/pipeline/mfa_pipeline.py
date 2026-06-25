@@ -55,7 +55,9 @@ def main(cfg: DictConfig) -> None:
             print('##### Annotating stimuli for patient %s #####' % pt)
             # Load stimulus annotations for the task
             annot_dir = Path(os.path.join(HOME, cfg.task.stim_dir))
-            annot_dict = mfa_utils.loadAnnotsToDict(annot_dir)
+            # Uniqueness Point sets stim_nested so files one subfolder deep are found too.
+            annot_dict = mfa_utils.loadAnnotsToDict(
+                annot_dir, nested=cfg.task.get('stim_nested', False))
 
             stims_ran, err_msg = run_stims(annot_dict, pt_path,
                                            mfa_path, cfg.merge_thresh,

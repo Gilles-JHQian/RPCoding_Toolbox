@@ -12,7 +12,7 @@ def test_defaults_filled():
     cfg = AppConfig(droot=Path("/data/CoganLab"))
     assert cfg.mfa_task(Task.LEXICAL_DELAY) == "lexical_repeat"
     assert cfg.mfa_task(Task.LEXICAL_NODELAY) == "lexical_repeat_no_delay"
-    assert cfg.mfa_task(Task.UNIQUENESS_POINT) is None
+    assert cfg.mfa_task(Task.UNIQUENESS_POINT) == "uniqueness_point"
 
 
 def test_override_and_roundtrip(tmp_path):

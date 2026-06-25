@@ -222,7 +222,7 @@ def prepareForMFA(base_dir: str, wav_path: Optional[str] = None,
 
 
 def loadAnnotsToDict(annot_dir: str, tier_name: Union[str, list[str]] =
-                     ['words', 'phones']) -> dict:
+                     ['words', 'phones'], nested: bool = False) -> dict:
     """Load text annotation files with the format:
     start_time    end_time    label
     from the specified directory to a dictionary. Only text files
@@ -234,6 +234,10 @@ def loadAnnotsToDict(annot_dir: str, tier_name: Union[str, list[str]] =
         tier_name (Union[str, list[str]], optional): Annotation levels to load.
         See main blurb above for how tier names affect file loading.
         Defaults to ['words', 'phones'].
+        nested (bool, optional): When True, also load files one subfolder deep
+        ('<annot_dir>/<token>/<token>_{tier}.txt'). Uniqueness Point stores each
+        token's annotations in its own subfolder rather than flat.
+        TODO(uniqueness-point): drop once that dataset is flattened. Defaults to False.
 
     Returns:
         dict: Dictionary containing annotation data separated by tier.
@@ -259,6 +263,10 @@ def loadAnnotsToDict(annot_dir: str, tier_name: Union[str, list[str]] =
     annot_dict = {}
     for tier in tier_name:
         to_load.extend(glob.glob((annot_dir / f'*_{tier}.txt').as_posix()))
+        if nested:
+            # Uniqueness Point keeps each token's files one subfolder deep.
+            # TODO(uniqueness-point): drop once stim_annotations are flattened.
+            to_load.extend(glob.glob((annot_dir / f'*/*_{tier}.txt').as_posix()))
         annot_dict[tier] = {}  # each tier will be a subdict
 
     # read annotation files and separate by tier
