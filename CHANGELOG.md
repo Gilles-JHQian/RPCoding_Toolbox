@@ -201,6 +201,23 @@ in development); entries are grouped by the feature branch that delivered them, 
 
 ### Fixed (later)
 
+- **MFA response-alignment phase failed on macOS/Linux** (`fix/mfa-macos-response-phase`): two more
+  Windows-only assumptions in the vendored pipeline, found after the `stim_dir` fix let the run get
+  further. (1) `run_resp` opened `merged_stim_times.txt.` with a **trailing dot** — Windows strips
+  trailing dots from filenames so it found the real file, but on macOS/Linux the dot is significant,
+  so `open()` raised `FileNotFoundError`, the response phase failed (caught → exit 0), and no
+  `mfa_resp_words.txt` was produced. Patched in the vendored `mfa_pipeline.py` (documented in
+  `mfa/VENDORED.md`, guarded by a test); verified on real D144 data (dotted → `FileNotFoundError`,
+  dotless → 168 response windows). (2) The pipeline invokes the `mfa` aligner by **bare name**
+  (`subprocess.run(['mfa', …])`), which needs the conda env's bin on PATH; launching the app without
+  `conda activate` (desktop shortcut, IDE, bare `python` path) left it off PATH → `FileNotFoundError:
+  'mfa'`. `run_mfa` now prepends the interpreter's bin dir (where `mfa` lives) to the subprocess
+  PATH, so alignment runs regardless of how the app was launched.
+- **Run log unreachable from the step's "done" chip** (`fix/mfa-macos-response-phase`): the state
+  chip only emitted a click when it carried an error *detail*, so clicking a green **done** chip did
+  nothing — there was no obvious way to see a completed step's log. The chip is now clickable
+  whenever a run log exists (MFA); clicking it opens `mfa_run.log` plus any recorded error in the log
+  viewer, and the row's meta line hints "click the chip for the run log".
 - **MFA reported "done" but produced no labels** (`fix/mfa-stim-dir-and-run-visibility`): the
   vendored task configs hardcode a Windows `stim_dir` (`Box\CoganLab\…\stim_annotations`) that the
   pipeline joins onto `home_dir`. Off Windows the backslashes aren't path separators, and the Box
