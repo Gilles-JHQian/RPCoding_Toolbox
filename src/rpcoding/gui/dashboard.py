@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QTimer, QUrl, Signal
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -28,6 +31,7 @@ from rpcoding.core.tasks import Task
 from rpcoding.gui.batch_dialog import BatchDialog
 from rpcoding.gui.config import load_subject_list, save_config, save_subject_list
 from rpcoding.gui.error_dialog import format_exception, show_error
+from rpcoding.gui.log_dialog import LogDialog
 from rpcoding.gui.settings_dialog import SettingsDialog
 from rpcoding.gui.theme import Theme
 from rpcoding.gui.widgets.step_row import StepRow
@@ -49,6 +53,8 @@ class Dashboard(QWidget):
         self._session: SubjectSession | None = None
         self._active: tuple | None = None  # (thread, worker) kept alive
         self._scan_token = 0
+        # Path to the most recent run log (MFA writes mfa_run.log); the status bar reveals it.
+        self._last_log_path: Path | None = None
         # Subject summaries are computed one-per-event-loop-tick so a big (cloud-synced) scan never
         # blocks the UI; a child QTimer is auto-cancelled on teardown.
         self._summary_queue: list[str] = []
@@ -71,6 +77,7 @@ class Dashboard(QWidget):
         body.addWidget(self._build_side_panel())
         body.addWidget(self._build_status_panel(), 1)
         outer.addLayout(body, 1)
+        outer.addWidget(self._build_status_bar())
 
         # A small bottom-centre toast for transient feedback (e.g. "Subject list saved").
         self._toast_label = QLabel("", self)
@@ -219,6 +226,100 @@ class Dashboard(QWidget):
         lay.addWidget(scroll, 1)
         return panel
 
+    def _build_status_bar(self) -> QWidget:
+        bar = QFrame()
+        bar.setObjectName("StatusBar")
+        bar.setFixedHeight(32)
+        lay = QHBoxLayout(bar)
+        lay.setContentsMargins(16, 0, 12, 0)
+        lay.setSpacing(10)
+        # Clickable status text → opens the last run log (the MFA pipeline's output, etc.).
+        self._status_btn = QPushButton("Ready")
+        self._status_btn.setObjectName("StatusLink")
+        self._status_btn.setFlat(True)
+        self._status_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._status_btn.setToolTip("Click to view the last run log")
+        self._status_btn.clicked.connect(self._show_last_log)
+        lay.addWidget(self._status_btn)
+        lay.addStretch(1)
+        self._open_results_btn = QPushButton("📂 Open results folder")
+        self._open_results_btn.setObjectName("Icon")
+        self._open_results_btn.setToolTip("Open this subject's response-coding results folder")
+        self._open_results_btn.setEnabled(False)
+        self._open_results_btn.clicked.connect(self._open_results_folder)
+        lay.addWidget(self._open_results_btn)
+        return bar
+
+    def _set_status(self, text: str) -> None:
+        self._status_btn.setText(text)
+
+    def _current_log_path(self) -> Path | None:
+        """The log to show when the status bar is clicked: the last one we ran, else this subject's
+        mfa_run.log if present."""
+        if self._last_log_path is not None and self._last_log_path.exists():
+            return self._last_log_path
+        if self._session is not None:
+            cand = self._session.results_dir / "mfa_run.log"
+            if cand.exists():
+                return cand
+        return None
+
+    def _recorded_errors_text(self) -> str:
+        """A synthesized 'log' from this subject's recorded step errors, for steps that don't
+        write a log file of their own."""
+        if self._session is None:
+            return ""
+        chunks = []
+        for step in STEP_ORDER:
+            err = self._session.step_error(step)
+            if err:
+                chunks.append(f"[{_SPECS[step].title}]\n{err}")
+        return "\n\n".join(chunks)
+
+    def _show_last_log(self) -> None:
+        path = self._current_log_path()
+        if path is not None:
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+            except OSError as exc:
+                text = f"Could not read log file:\n{exc}"
+            LogDialog(
+                f"Run log — {path.parent.name}/{path.name}",
+                text,
+                folder=path.parent,
+                parent=self,
+            ).exec()
+            return
+        # No log file on disk — fall back to any recorded step errors for this subject.
+        errors = self._recorded_errors_text()
+        if errors:
+            folder = self._session.results_dir if self._session is not None else None
+            LogDialog("Last run — recorded errors", errors, folder=folder, parent=self).exec()
+            return
+        QMessageBox.information(
+            self,
+            "Run log",
+            "No run log found yet.\n\nThe MFA step writes mfa_run.log into the subject's "
+            "results folder when it runs.",
+        )
+
+    def _remember_log_for(self, step: Step) -> None:
+        """Point the status-bar log link at the freshest log produced by ``step`` (currently only
+        MFA writes one); other steps fall back to recorded errors."""
+        if self._session is None:
+            return
+        log = self._session.results_dir / "mfa_run.log"
+        self._last_log_path = log if log.exists() else None
+
+    def _open_results_folder(self) -> None:
+        if self._session is None:
+            return
+        rd = self._session.results_dir
+        if not rd.exists():
+            self._toast("Results folder doesn't exist yet — run the earlier steps first")
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(rd)))
+
     # ---- backend wiring ----
     @property
     def current_task(self) -> Task:
@@ -276,6 +377,9 @@ class Dashboard(QWidget):
 
     def _on_task_changed(self) -> None:
         self._session = None
+        self._last_log_path = None
+        self._open_results_btn.setEnabled(False)
+        self._set_status("Ready")
         self._header.setText("Select a subject")
         self._sub_path.setText("")
         self._banner.setText("")
@@ -285,6 +389,9 @@ class Dashboard(QWidget):
 
     def _on_subject(self, subject: str) -> None:
         self._session = SubjectSession(self._config, self.current_task, subject)
+        self._last_log_path = None  # fall back to this subject's own run log
+        self._open_results_btn.setEnabled(True)
+        self._set_status(f"{subject} selected")
         self._refresh_states()
 
     def apply_theme(self, theme: Theme) -> None:
@@ -375,8 +482,12 @@ class Dashboard(QWidget):
             return
         # Single automated step: run inline (no popup) — just flip the row to "running".
         self._rows[step].set_running()
+        self._remember_log_for(step)
+        self._set_status(f"Running {_SPECS[step].title}…")
 
         def done() -> None:
+            self._remember_log_for(step)
+            self._set_status(f"✓ {_SPECS[step].title} — done")
             try:
                 self._refresh_states()
                 if self._session is not None:
@@ -389,6 +500,9 @@ class Dashboard(QWidget):
 
         def failed(message: str) -> None:
             # The worker already recorded the error (red chip); also pop a dialog so it's visible.
+            self._remember_log_for(step)
+            self._set_status(f"✗ {_SPECS[step].title} failed — click to view log")
+            self._refresh_states()
             show_error(f"Step failed: {_SPECS[step].title}", message, parent=self)
 
         def report(fraction: float | None, message: str) -> None:
