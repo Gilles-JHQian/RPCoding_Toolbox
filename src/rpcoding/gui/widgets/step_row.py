@@ -41,7 +41,7 @@ class StepRow(QWidget):
         self._step = step
         self._spec = STEP_SPECS[step]
         self._state = EffectiveState.NOT_STARTED
-        self._last: tuple = (EffectiveState.NOT_STARTED, "", None)
+        self._last: tuple = (EffectiveState.NOT_STARTED, "", None, False)
         self._manual = self._spec.kind == StepKind.MANUAL
 
         lay = QHBoxLayout(self)
@@ -146,11 +146,22 @@ class StepRow(QWidget):
             self._progress.setValue(pct)
         self._status.setText(message[:60] if message else "")
 
-    def set_state(self, state: EffectiveState, meta: str = "", error: str | None = None) -> None:
+    def set_state(
+        self,
+        state: EffectiveState,
+        meta: str = "",
+        error: str | None = None,
+        log_available: bool = False,
+    ) -> None:
         self._state = state
-        self._last = (state, meta, error)
+        self._last = (state, meta, error, log_available)
         self._dot.set_state(state)
-        self._chip.set_state(state, detail=error if state == EffectiveState.ERROR else None)
+        # The chip is clickable when there's an error detail OR a run log to show (e.g. MFA).
+        self._chip.set_state(
+            state,
+            detail=error if state == EffectiveState.ERROR else None,
+            clickable=log_available,
+        )
         # Back to the static meta line; hide the (now finished) progress bar.
         self._prog_row.setVisible(False)
         self._meta.setVisible(True)
