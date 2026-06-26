@@ -565,8 +565,10 @@ class Dashboard(QWidget):
             return
         self._header.setText(self._session.subject)
         states = self._session.effective_states()
-        done = sum(1 for s in states.values() if s == EffectiveState.DONE)
-        stale = sum(1 for s in states.values() if s == EffectiveState.STALE)
+        # Optional steps (Denoise) don't count toward completion — mirror SubjectSession.summary().
+        required = {st: s for st, s in states.items() if _SPECS[st].kind != StepKind.OPTIONAL}
+        done = sum(1 for s in required.values() if s == EffectiveState.DONE)
+        stale = sum(1 for s in required.values() if s == EffectiveState.STALE)
         self._sub_path.setText(f"{self.current_task.value} · results/{self._session.subject}/")
         if self._session.flagged:
             self._banner.setText("⚑ Flagged — manual problem")
@@ -575,7 +577,7 @@ class Dashboard(QWidget):
             self._banner.setText(f"⚠ {stale} step(s) stale — upstream edited")
             self._banner.setStyleSheet(f"color: {self._theme.state_color(EffectiveState.STALE)};")
         else:
-            self._banner.setText(f"{done} / {len(states)} complete")
+            self._banner.setText(f"{done} / {len(required)} complete")
             self._banner.setStyleSheet(f"color: {self._theme.color('text-ter')};")
         for step, row in self._rows.items():
             error = self._session.step_error(step)

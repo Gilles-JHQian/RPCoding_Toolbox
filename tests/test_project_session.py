@@ -224,7 +224,8 @@ def test_file_based_completion_without_manifest(tmp_path):
     # write-Trials leaves no detectable artifact -> not auto-detected
     assert st[Step.WRITE_TRIALS] == EffectiveState.NOT_STARTED
     done, total, rep = s.summary()
-    assert (done, total) == (7, 9) and rep == EffectiveState.NOT_STARTED
+    # 8 required steps (the optional Denoise is excluded); 7 done, write-Trials still missing.
+    assert (done, total) == (7, 8) and rep == EffectiveState.NOT_STARTED
 
 
 def test_empty_mfa_output_is_not_done(tmp_path):
@@ -285,7 +286,28 @@ def test_summary_all_done_when_trials_recorded(tmp_path):
     s.record_done(Step.DENOISE)
     s.record_done(Step.WRITE_TRIALS)
     done, total, rep = s.summary()
-    assert (done, total) == (9, 9) and rep == EffectiveState.DONE
+    # 8 required steps all done (the optional Denoise is excluded from the count) -> green.
+    assert (done, total) == (8, 8) and rep == EffectiveState.DONE
+
+
+def test_optional_denoise_not_done_still_green(tmp_path):
+    # Everything required is done but the optional Denoise step never ran -> still complete (green).
+    s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")
+    rd = s.results_dir
+    (rd / paths.MFA_DIRNAME).mkdir(parents=True)
+    for name in (
+        paths.ALLBLOCKS_WAV,
+        paths.TRIALINFO_MAT,
+        paths.FIRST_STIMS_TXT,
+        paths.CUE_EVENTS_TXT,
+        paths.CONDITION_EVENTS_TXT,
+        paths.RESP_WORDS_ERRORS_TXT,
+    ):
+        (rd / name).write_bytes(b"x")
+    (rd / paths.MFA_DIRNAME / "mfa_stim_words.txt").write_bytes(b"x")
+    s.record_done(Step.WRITE_TRIALS)  # the one required step with no on-disk artifact
+    assert s.effective_state(Step.DENOISE) == EffectiveState.NOT_STARTED  # optional, never ran
+    assert s.summary() == (8, 8, EffectiveState.DONE)
 
 
 # ---- runner ----
