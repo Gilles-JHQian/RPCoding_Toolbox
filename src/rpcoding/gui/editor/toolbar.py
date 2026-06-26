@@ -32,6 +32,8 @@ class EditorToolbar(QFrame):
     theme_toggle_requested = Signal()
     volume_changed = Signal(float)  # playback output gain
     selection_edited = Signal(float, float)  # start, end (seconds) typed into the readout
+    set_noise_profile_requested = Signal()  # capture the current selection as the noise profile
+    denoise_requested = Signal(float)  # apply noise reduction at this strength (0..1)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -74,6 +76,34 @@ class EditorToolbar(QFrame):
             btn.setToolTip(tip)
             btn.clicked.connect(sig.emit)
             lay.addWidget(btn)
+
+        # Denoise (Audacity-style): set a noise profile from a noise-only selection, then reduce.
+        lay.addWidget(self._sep())
+        self._noise_btn = QPushButton("🔇 Noise profile")
+        self._noise_btn.setToolTip("Set the noise profile from the selection (a noise-only span)")
+        self._noise_btn.clicked.connect(self.set_noise_profile_requested.emit)
+        lay.addWidget(self._noise_btn)
+        self._noise_status = QLabel("no profile")
+        self._noise_status.setObjectName("Meta")
+        lay.addWidget(self._noise_status)
+        self._strength = QSlider(Qt.Orientation.Horizontal)
+        self._strength.setRange(0, 100)
+        self._strength.setValue(80)
+        self._strength.setFixedWidth(72)
+        self._strength.setToolTip("Noise-reduction strength")
+        self._strength.valueChanged.connect(lambda v: self._strength_val.setText(f"{v}%"))
+        lay.addWidget(self._strength)
+        self._strength_val = QLabel("80%")
+        self._strength_val.setObjectName("Meta")
+        self._strength_val.setFixedWidth(32)
+        lay.addWidget(self._strength_val)
+        self._denoise_btn = QPushButton("Denoise")
+        self._denoise_btn.setToolTip("Reduce noise across the whole audio (profile + strength)")
+        self._denoise_btn.setEnabled(False)
+        self._denoise_btn.clicked.connect(
+            lambda: self.denoise_requested.emit(self._strength.value() / 100.0)
+        )
+        lay.addWidget(self._denoise_btn)
 
         lay.addStretch(1)
 
@@ -127,7 +157,8 @@ class EditorToolbar(QFrame):
         # Mouse-only controls: don't take keyboard focus, so Tab stays with the editor (label nav).
         for w in self.findChildren(QPushButton):
             w.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self._vol.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        for s in (self._vol, self._strength):
+            s.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
     def _sep(self) -> QFrame:
         line = QFrame()
@@ -156,11 +187,34 @@ class EditorToolbar(QFrame):
 
     def set_progress(self, pct: int, msg: str = "") -> None:
         self._bar.setVisible(True)
+        self._bar.setRange(0, 100)  # determinate (reset after a busy phase)
         self._bar.setValue(pct)
         if msg:
             self._status.setText(msg)
 
+    def set_busy(self, msg: str = "") -> None:
+        """Indeterminate (animated) progress bar for an operation with no measurable progress."""
+        self._bar.setVisible(True)
+        self._bar.setRange(0, 0)
+        if msg:
+            self._status.setText(msg)
+
+    def set_noise_profile(self, span) -> None:
+        """Show the captured noise-profile span and enable Denoise (or clear it when ``None``)."""
+        if span is None:
+            self._noise_status.setText("no profile")
+            self._denoise_btn.setEnabled(False)
+        else:
+            a, b = span
+            self._noise_status.setText(f"{a:.2f}–{b:.2f}s")
+            self._denoise_btn.setEnabled(True)
+
+    def set_denoise_busy(self, busy: bool) -> None:
+        self._noise_btn.setEnabled(not busy)
+        self._denoise_btn.setEnabled(not busy and self._noise_status.text() != "no profile")
+
     def build_done(self) -> None:
+        self._bar.setRange(0, 100)
         self._bar.setVisible(False)
         self._status.setText("Ready")
 
