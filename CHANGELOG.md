@@ -103,6 +103,17 @@ UP (downstream `rpcode2trials` / word-lists are still lexical-only and come late
   written to `allblocks.wav` and the editor reloads it. Runs on a worker thread (GUI stays
   responsive); the Denoise step opens the editor and is marked done once reduction is applied.
 
+### UX: loading feedback + hover cursors (`feat/loading-and-cursor`)
+
+- **Loading popups.** A small `LoadingDialog` (progress bar) now appears (a) on app **startup**
+  while the main window is built (so launch isn't a blank wait), and (b) when **opening the editor**
+  — the editor stays hidden and a popup tracks the waveform/spectrogram render (driven by a new
+  `load_progress` signal), revealing the editor once it's ready. The open popup is delayed ~180 ms so
+  a cached, instant open doesn't flash it.
+- **Pointing-hand cursor on hover.** An app-wide event filter (`hover_cursor.py`) gives every
+  clickable widget (buttons, combo boxes) the hand cursor on mouse-over (and the plain arrow when
+  disabled) — covering dynamically created controls that a stylesheet can't reach.
+
 - **Label virtualization:** only the labels in view are rendered (recycled pool, capped); the
   response-coding editor no longer freezes/crashes on the thousands-of-intervals tiers (a working
   window renders in ~2–15 ms). The dense `*_phones` MFA tiers are excluded.
