@@ -22,13 +22,11 @@ from PySide6.QtWidgets import (
 
 from rpcoding.core import paths
 from rpcoding.core.config import AppConfig
-from rpcoding.core.runner import run_step
 from rpcoding.core.scanner import scan_subjects
 from rpcoding.core.session import SubjectSession
 from rpcoding.core.steps import STEP_ORDER, EffectiveState, Step, StepKind, StepSpec
 from rpcoding.core.steps import STEP_SPECS as _SPECS
 from rpcoding.core.tasks import Task
-from rpcoding.gui.batch_dialog import BatchDialog
 from rpcoding.gui.config import load_subject_list, save_config, save_subject_list
 from rpcoding.gui.error_dialog import format_exception, show_error
 from rpcoding.gui.log_dialog import LogDialog
@@ -494,6 +492,9 @@ class Dashboard(QWidget):
             self.open_editor.emit(self._session, step)
             return
         # Single automated step: run inline (no popup) — just flip the row to "running".
+        # Lazy import: the pipeline chain is only pulled when a step actually runs (faster startup).
+        from rpcoding.core.runner import run_step
+
         self._rows[step].set_running()
         self._remember_log_for(step)
         self._set_status(f"Running {_SPECS[step].title}…")
@@ -557,6 +558,8 @@ class Dashboard(QWidget):
         ).exec()
 
     def _open_batch(self) -> None:
+        from rpcoding.gui.batch_dialog import BatchDialog  # lazy: pulls the pipeline chain
+
         subjects = self._subjects.checked_subjects()
         if not subjects:
             return

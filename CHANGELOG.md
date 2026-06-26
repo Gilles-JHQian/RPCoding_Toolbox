@@ -114,6 +114,20 @@ UP (downstream `rpcode2trials` / word-lists are still lexical-only and come late
   clickable widget (buttons, combo boxes) the hand cursor on mouse-over (and the plain arrow when
   disabled) — covering dynamically created controls that a stylesheet can't reach.
 
+### Faster startup (`perf/lazy-startup`)
+
+- **The audio editor is built lazily on first open, not at launch.** Profiling showed startup was
+  dominated by the editor's imports — `import pyqtgraph` (~0.17 s) + `import scipy.signal` (~0.5 s)
+  — plus ~0.26 s constructing it, all paid before the window even appeared (and far worse on
+  low-end machines / cold disk). The editor is the *only* thing that needs those; the dashboard
+  doesn't. `MainWindow` now constructs the editor on the first **Open editor** (a popup shows during
+  that one-time import/build), so launch no longer loads pyqtgraph/scipy.signal at all — verified by
+  a regression test. Warm `import rpcoding.gui.app` dropped ~1000 ms → ~390 ms; `MainWindow(...)`
+  ~108 ms → ~48 ms.
+- **The pipeline action chain is imported lazily too.** The dashboard no longer pulls
+  `core.runner` (combine-wavs / trialInfo / MFA / rpcode2trials) or the batch dialog at import; they
+  load when a step actually runs or the batch dialog opens.
+
 - **Label virtualization:** only the labels in view are rendered (recycled pool, capped); the
   response-coding editor no longer freezes/crashes on the thousands-of-intervals tiers (a working
   window renders in ~2–15 ms). The dense `*_phones` MFA tiers are excluded.
