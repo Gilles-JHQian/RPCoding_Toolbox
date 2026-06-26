@@ -60,11 +60,16 @@ class SubjectList(QListWidget):
             item.setHidden(bool(needle) and needle not in sid.lower())
 
     def set_summary(
-        self, subject: str, done: int | None, total: int | None, state: EffectiveState
+        self,
+        subject: str,
+        done: int | None,
+        total: int | None,
+        state: EffectiveState,
+        step_label: str = "",
     ) -> None:
         row = self._rows.get(subject)
         if row is not None:
-            row.set_summary(done, total, state)
+            row.set_summary(done, total, state, step_label)
 
     def checked_subjects(self) -> list[str]:
         return [sid for sid, row in self._rows.items() if row.check.isChecked()]

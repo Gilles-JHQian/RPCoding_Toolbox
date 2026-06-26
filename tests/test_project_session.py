@@ -308,6 +308,16 @@ def test_optional_denoise_not_done_still_green(tmp_path):
     s.record_done(Step.WRITE_TRIALS)  # the one required step with no on-disk artifact
     assert s.effective_state(Step.DENOISE) == EffectiveState.NOT_STARTED  # optional, never ran
     assert s.summary() == (8, 8, EffectiveState.DONE)
+    assert s.status()[3] is None  # all required done -> no current step
+
+
+def test_status_current_step(tmp_path):
+    s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")
+    assert s.status()[3] == Step.CREATE_RESULTS  # nothing done -> at the first step
+    s.results_dir.mkdir(parents=True)
+    (s.results_dir / paths.ALLBLOCKS_WAV).write_bytes(b"x")  # create + concat now done on disk
+    # the next required step (the optional Denoise is skipped in the frontier)
+    assert s.status()[3] == Step.BUILD_TRIALINFO
 
 
 # ---- runner ----
