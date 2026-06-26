@@ -15,7 +15,7 @@ from rpcoding.core.config import AppConfig
 from rpcoding.core.events.condition_events import generate_condition_events
 from rpcoding.core.events.cue_events import generate_cue_events
 from rpcoding.core.matio import load_trialinfo
-from rpcoding.core.mfa.runner import run_mfa
+from rpcoding.core.mfa.runner import resolve_stim_dir, run_mfa
 from rpcoding.core.paths import find_trials_mat
 from rpcoding.core.progress import Reporter, StepProgress, noop
 from rpcoding.core.rpcode.rpcode2trials import generate_trials
@@ -74,14 +74,24 @@ def _make_events(s: SubjectSession, report: Reporter | None = None) -> None:
     r(1.0, "Wrote cue + condition events")
 
 
-# bsliang_mfa_pipeline.py prints these phase banners on stdout; map the ones we recognise to a
-# coarse fraction so the bar advances. Unrecognised lines still surface live as the message.
+# The pipeline + the MFA aligner print these phase banners on stdout/stderr; map the ones we
+# recognise to a coarse fraction so the bar advances through the long run. Order matters only for
+# readability — each line bumps to the highest matching fraction. Unrecognised lines still surface
+# live as the message (so even un-mapped MFA logging shows the run is alive). Checked most-specific
+# first within a phase so e.g. "generating alignments" wins over a generic "generating".
 _MFA_MARKS: tuple[tuple[str, float, str], ...] = (
-    ("annotating stimuli", 0.15, "Annotating stimuli…"),
-    ("preparing patient", 0.30, "Preparing files for MFA…"),
+    ("annotating stimuli", 0.12, "Annotating stimuli (loading from Box)…"),
+    ("preparing patient", 0.28, "Preparing files for MFA…"),
+    ("setting up corpus", 0.40, "Setting up the alignment corpus…"),
+    ("generating base features", 0.48, "Generating acoustic features…"),
+    ("generating mfcc", 0.48, "Generating acoustic features…"),
+    ("calculating cmvn", 0.52, "Normalising features…"),
     ("mfa align", 0.45, "Running forced alignment…"),
-    ("generating alignments", 0.60, "Generating alignments…"),
-    ("exporting", 0.85, "Exporting alignments…"),
+    ("generating alignments", 0.62, "Generating alignments…"),
+    ("collecting phone", 0.70, "Collecting aligned phones…"),
+    ("exporting files", 0.82, "Exporting alignments…"),
+    ("exporting", 0.82, "Exporting alignments…"),
+    ("done! everything took", 0.88, "Alignment done; writing labels…"),
     ("finished processing", 1.0, "MFA complete"),
 )
 
@@ -100,9 +110,34 @@ def _mfa_line_progress(line: str, state: dict) -> tuple[float | None, str]:
     return state["frac"], text[:80]
 
 
-def mfa_reported_errors(log: str) -> bool:
-    """True if the vendored MFA pipeline logged per-patient errors (it still exits 0 then)."""
-    return "Errors occurred for the following patients" in log
+def _mfa_failure(s: SubjectSession, log: str, log_path: Path) -> str | None:
+    """Detect a *silent* MFA failure: the vendored pipeline catches per-patient errors and still
+    exits 0, so a clean return code isn't proof of success. Returns an error message, or None if the
+    run genuinely produced this subject's stimulus annotations."""
+    lines = log.splitlines()
+    tail = "\n".join(lines[-25:]).strip()
+    detail = f"\n\n--- MFA output (last lines) ---\n{tail}" if tail else ""
+    # The pipeline prints: "Errors occurred for the following patients: \n['D144', ...]".
+    for i, line in enumerate(lines):
+        if "Errors occurred for the following patients" in line:
+            if s.subject in " ".join(lines[i : i + 3]):
+                return (
+                    f"MFA reported an error for {s.subject} (it still exited 0). "
+                    f"Full log: {log_path}{detail}"
+                )
+    # Even without that banner, the real proof is a non-empty stimulus-annotation file.
+    stim_words = s.results_dir / paths.MFA_DIRNAME / "mfa_stim_words.txt"
+    try:
+        wrote_output = stim_words.exists() and stim_words.stat().st_size > 0
+    except OSError:
+        wrote_output = False
+    if not wrote_output:
+        return (
+            f"MFA produced no stimulus annotations ({paths.MFA_DIRNAME}/mfa_stim_words.txt is "
+            f"empty) — usually the stim-annotation directory was not found. Full log: {log_path}"
+            f"{detail}"
+        )
+    return None
 
 
 def _run_mfa(s: SubjectSession, report: Reporter | None = None) -> None:
@@ -112,6 +147,12 @@ def _run_mfa(s: SubjectSession, report: Reporter | None = None) -> None:
         raise ValueError(f"No MFA task config mapped for {s.task}; configure it in settings")
     patient_dir = s.results_dir.parent  # results root holding the subject folders
     home_dir = Path(s.config.droot).parent.parent  # the dir that contains 'Box'
+    # Re-root the stim-annotation dir onto the real data root: the vendored task configs hardcode a
+    # Windows 'Box\...' path that resolves nowhere off Windows, so MFA would silently align nothing.
+    extra: list[str] = []
+    stim_dir = resolve_stim_dir(s.config.droot, task_config)
+    if stim_dir is not None:
+        extra.append(f"task.stim_dir={stim_dir.as_posix()}")
     state = {"frac": 0.05}
     r(None, "Starting MFA…")
 
@@ -120,7 +161,9 @@ def _run_mfa(s: SubjectSession, report: Reporter | None = None) -> None:
         if msg:
             r(frac, msg)
 
-    result = run_mfa(patient_dir, task_config, s.subject, home_dir=home_dir, on_line=on_line)
+    result = run_mfa(
+        patient_dir, task_config, s.subject, home_dir=home_dir, extra=extra, on_line=on_line
+    )
     # Always keep the full pipeline output on disk so a failure can actually be diagnosed.
     log_path = s.results_dir / "mfa_run.log"
     try:
@@ -128,19 +171,15 @@ def _run_mfa(s: SubjectSession, report: Reporter | None = None) -> None:
         log_path.write_text(result.log, encoding="utf-8")
     except OSError:
         pass
-    tail = "\n".join(result.log.splitlines()[-25:]).strip()
-    detail = f"\n\n--- MFA output (last lines) ---\n{tail}" if tail else ""
     if result.returncode != 0:
+        tail = "\n".join(result.log.splitlines()[-25:]).strip()
+        detail = f"\n\n--- MFA output (last lines) ---\n{tail}" if tail else ""
         raise RuntimeError(
             f"MFA exited with code {result.returncode}. Full log: {log_path}{detail}"
         )
-    # The vendored pipeline catches per-patient errors, prints them, and still exits 0. Without this
-    # the step would be marked Done with no real alignment output (a silent "Done but empty").
-    if mfa_reported_errors(result.log):
-        raise RuntimeError(
-            f"MFA reported per-patient errors (the pipeline exited 0 but a patient failed). "
-            f"Full log: {log_path}{detail}"
-        )
+    failure = _mfa_failure(s, result.log, log_path)
+    if failure:
+        raise RuntimeError(failure)
     r(1.0, "MFA complete")
 
 

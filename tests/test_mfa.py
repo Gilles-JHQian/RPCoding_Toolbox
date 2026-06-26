@@ -9,7 +9,13 @@ import pytest
 from rpcoding.core.mfa import models as mfa_models
 from rpcoding.core.mfa.ingest import ingest_mfa_tiers
 from rpcoding.core.mfa.models import install_custom_dicts, mfa_status
-from rpcoding.core.mfa.runner import build_mfa_command, run_mfa, verify_inputs
+from rpcoding.core.mfa.runner import (
+    PIPELINE_DIR,
+    build_mfa_command,
+    resolve_stim_dir,
+    run_mfa,
+    verify_inputs,
+)
 
 
 def test_ingest_mfa_tiers(tmp_path):
@@ -33,6 +39,41 @@ def test_build_mfa_command():
     assert "patients=D9" in cmd
     assert "home_dir=/home" in cmd
     assert cwd.name == "pipeline"
+
+
+def _write_task_conf(pdir, name, stim_dir):
+    conf = pdir / "conf" / "task"
+    conf.mkdir(parents=True, exist_ok=True)
+    (conf / f"{name}.yaml").write_text(
+        f"name: {name}\nstim_dir: '{stim_dir}'\nmax_dur: 7.0\n", newline="\n"
+    )
+
+
+def test_resolve_stim_dir_rebases_windows_path(tmp_path):
+    # The vendored configs hardcode a Windows 'Box\...' path; it must re-root onto the real droot
+    # (whose Box mount may be named differently, e.g. 'Box-Box'), with backslashes normalised.
+    _write_task_conf(
+        tmp_path,
+        "lexical_repeat_no_delay",
+        r"Box\CoganLab\ECoG_Task_Data\Stim\Lexical\mfa\stim_annotations",
+    )
+    droot = tmp_path / "Box-Box" / "CoganLab"
+    resolved = resolve_stim_dir(droot, "lexical_repeat_no_delay", pipeline_dir=tmp_path)
+    assert resolved == droot / "ECoG_Task_Data" / "Stim" / "Lexical" / "mfa" / "stim_annotations"
+
+
+def test_resolve_stim_dir_missing_config_is_none(tmp_path):
+    (tmp_path / "conf" / "task").mkdir(parents=True)
+    assert resolve_stim_dir(tmp_path, "no_such_task", pipeline_dir=tmp_path) is None
+
+
+def test_vendored_pipeline_has_no_trailing_dot_path():
+    """Guard the local patch (see mfa/VENDORED.md): the vendored pipeline must read
+    'merged_stim_times.txt', not the trailing-dot form, which only works on Windows (it strips the
+    dot) and breaks the response-alignment phase on macOS/Linux. Re-sync must re-apply this."""
+    src = (PIPELINE_DIR / "mfa_pipeline.py").read_text(encoding="utf-8")
+    assert "merged_stim_times.txt." not in src
+    assert "merged_stim_times.txt" in src  # the correct name is still referenced
 
 
 def test_verify_inputs(tmp_path):
@@ -83,14 +124,27 @@ def test_install_custom_dicts(tmp_path):
     assert all((tmp_path / n).exists() for n in names)
 
 
-def test_mfa_reported_errors_detects_swallowed_per_patient_failure():
-    from rpcoding.core.runner import mfa_reported_errors
+def test_mfa_failure_detects_swallowed_per_patient_failure(tmp_path):
+    # The vendored pipeline catches per-patient errors and still exits 0, so a clean return code
+    # isn't proof of success; _mfa_failure surfaces both the error banner and an empty output.
+    from types import SimpleNamespace
 
-    clean = "##### Running MFA for task: uniqueness_point #####\nFinished processing 1 patients\n"
-    assert not mfa_reported_errors(clean)
-    # The pipeline catches a per-patient error, prints this, and still exits 0 -> must be surfaced.
-    failed = clean + "Errors occurred for the following patients: \n['D65']\n"
-    assert mfa_reported_errors(failed)
+    from rpcoding.core import paths
+    from rpcoding.core.runner import _mfa_failure
+
+    s = SimpleNamespace(subject="D65", results_dir=tmp_path)
+    log_path = tmp_path / "mfa_run.log"
+    stim = tmp_path / paths.MFA_DIRNAME / "mfa_stim_words.txt"
+    stim.parent.mkdir(parents=True)
+
+    stim.write_text("0\t1\tx\n")  # a run that actually wrote stim annotations
+    assert _mfa_failure(s, "Finished processing 1 patients\n", log_path) is None
+
+    failed = "Errors occurred for the following patients: \n['D65']\n"  # this subject failed
+    assert _mfa_failure(s, failed, log_path) is not None
+
+    stim.write_text("")  # empty stim annotations = a silent miss even without the banner
+    assert _mfa_failure(s, "Finished processing\n", log_path) is not None
 
 
 def test_mfa_status_reflects_install(tmp_path, monkeypatch):

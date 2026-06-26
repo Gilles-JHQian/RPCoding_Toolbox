@@ -17,3 +17,18 @@ using the project's own Python (`sys.executable`), so `from utils import mfa_uti
 To re-sync with upstream, re-copy the files above and update this note with the upstream commit.
 Montreal Forced Aligner itself comes from the conda env (`environment.yml`); only the wrapper +
 dictionaries are vendored.
+
+## Local patches (kept across re-syncs)
+
+The upstream pipeline only ever ran on Windows, so it carries Windows-only assumptions that silently
+break on macOS/Linux. Re-apply these after any re-sync:
+
+- **`merged_stim_times.txt.` → `merged_stim_times.txt`** (`mfa_pipeline.py`, `run_resp`, two call
+  sites): `annotateResp` was passed a filename with a **trailing dot**. Windows strips trailing dots
+  from filenames, so it opened the real `merged_stim_times.txt`; on macOS/Linux the dot is
+  significant, so `open()` raised `FileNotFoundError`, the response-alignment phase failed (caught,
+  exit 0), and no `mfa_resp_words.txt` was produced. The write side (`mergeAnnots`, `merge_path=…/
+  merged_stim_times.txt`) never used the dot — it was always just a typo.
+- **`task.stim_dir`** is *not* patched in the vendored file — the app overrides it at runtime with an
+  absolute path (`rpcoding.core.mfa.runner.resolve_stim_dir`), because the configured value is a
+  hardcoded Windows `Box\…` path. See that function and the per-task `conf/task/*.yaml` notes.

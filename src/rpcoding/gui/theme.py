@@ -177,6 +177,10 @@ def qss(theme: Theme) -> str:
     QPushButton#IconSmall {{ padding: 6px 9px; font-size: 12px; border-radius: 6px; }}
     QPushButton#ThemeToggle {{ padding: 8px 12px; font-size: 12px; }}
     QFrame#ToolSep {{ background: {p['border']}; border: none; max-width: 1px; }}
+    QFrame#StatusBar {{ background: {p['toolbar']}; border-top: 1px solid {p['border']}; }}
+    QPushButton#StatusLink {{ background: transparent; border: none; padding: 4px 2px;
+                              color: {p['text-sec']}; font-size: 12px; text-align: left; }}
+    QPushButton#StatusLink:hover {{ color: {p['accent']}; text-decoration: underline; }}
 
     QLineEdit {{ background: {p['btn-bg']}; border: 1px solid {p['btn-border']};
                  border-radius: 7px; padding: 6px 11px; color: {p['text-pri']}; }}

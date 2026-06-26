@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import re
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
@@ -10,7 +12,50 @@ from pathlib import Path
 
 PIPELINE_DIR = Path(__file__).parent / "pipeline"
 PIPELINE_SCRIPT = "mfa_pipeline.py"
+TASK_CONF_SUBDIR = "conf/task"
 REQUIRED_INPUTS = ("allblocks.wav", "cue_events.txt", "trialInfo.mat")
+
+_STIM_DIR_RE = re.compile(r"^\s*stim_dir\s*:\s*(.+?)\s*$")
+
+
+def _configured_stim_dir(task_config: str, pipeline_dir: Path | str | None = None) -> str | None:
+    """The raw ``stim_dir`` value from a task's vendored YAML config (or None if absent)."""
+    pdir = Path(pipeline_dir) if pipeline_dir else PIPELINE_DIR
+    conf = pdir / TASK_CONF_SUBDIR / f"{task_config}.yaml"
+    try:
+        text = conf.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in text.splitlines():
+        m = _STIM_DIR_RE.match(line)
+        if m:
+            return m.group(1).strip().strip("'\"") or None
+    return None
+
+
+def resolve_stim_dir(
+    droot: Path | str, task_config: str, *, pipeline_dir: Path | str | None = None
+) -> Path | None:
+    """Absolute stim-annotation dir for ``task_config``, re-rooted onto ``droot`` ($BOX/CoganLab).
+
+    The vendored task YAMLs hardcode a Windows path such as
+    ``Box\\CoganLab\\...\\stim_annotations`` that the pipeline joins to ``home_dir``. Off Windows
+    the backslashes aren't separators, and the Box mount isn't always named literally ``Box`` (it
+    is ``Box-Box`` on macOS), so that join silently points nowhere — MFA finds zero annotations,
+    writes an empty ``mfa_stim_words.txt``, and dies in ``mergeAnnots`` with "list index out of
+    range". We keep only the portion after the last ``CoganLab`` segment and join it under ``droot``
+    (which already resolves to the real ``$BOX/CoganLab``). Returns ``None`` if the task has no
+    ``stim_dir`` configured.
+    """
+    raw = _configured_stim_dir(task_config, pipeline_dir)
+    if not raw:
+        return None
+    parts = [p for p in raw.replace("\\", "/").split("/") if p]
+    lowered = [p.lower() for p in parts]
+    if "coganlab" in lowered:
+        last = max(i for i, p in enumerate(lowered) if p == "coganlab")
+        parts = parts[last + 1 :]
+    return Path(droot).joinpath(*parts)
 
 
 @dataclass
@@ -55,6 +100,24 @@ def verify_inputs(patient_dir: Path | str, patients: str) -> list[Path]:
     return missing
 
 
+def _subprocess_env(python_exe: str | None) -> dict[str, str]:
+    """Env for the pipeline subprocess that can find the ``mfa`` console script even when the conda
+    env isn't activated. The vendored pipeline calls ``mfa`` by bare name (``subprocess.run(['mfa',
+    ...])``), which relies on PATH; launching the GUI without ``conda activate`` (a desktop
+    shortcut, an IDE, a bare ``python`` path) leaves the env's bin off PATH, so ``mfa`` isn't found.
+    Prepend the interpreter's bin dir — where ``mfa`` is installed next to ``python`` — to PATH."""
+    env = os.environ.copy()
+    bin_dir = str(Path(python_exe or sys.executable).parent)
+    parts = env.get("PATH", "").split(os.pathsep)
+    if bin_dir not in parts:
+        env["PATH"] = os.pathsep.join([bin_dir, *parts]) if parts != [""] else bin_dir
+    # Force unbuffered stdout/stderr: when the pipeline's output is a pipe (not a tty) Python
+    # block-buffers it, so the GUI gets nothing until the process exits and the progress bar can't
+    # move. Unbuffering streams each phase banner / MFA log line live so the bar can advance.
+    env["PYTHONUNBUFFERED"] = "1"
+    return env
+
+
 def run_mfa(
     patient_dir: Path | str,
     task_config: str,
@@ -86,7 +149,13 @@ def run_mfa(
     )
     lines: list[str] = []
     proc = subprocess.Popen(
-        cmd, cwd=str(cwd), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+        cmd,
+        cwd=str(cwd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        env=_subprocess_env(python_exe),
     )
     assert proc.stdout is not None
     for raw in proc.stdout:
