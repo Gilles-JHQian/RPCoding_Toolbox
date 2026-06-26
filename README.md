@@ -40,18 +40,16 @@ On Windows with conda installed at a non-default location, invoke conda by full 
 
 ## Launch
 
+**Double-click** a launcher in the project root (it finds the `rpcoding` conda env automatically):
+
+- **Windows** — `launch.bat` (opens the GUI with no console window)
+- **macOS / Linux** — `launch.command` (double-click in Finder; runs the GUI)
+
 From the command line (any OS):
 
 ```bash
 conda activate rpcoding
 rpcoding-gui            # or:  python -m rpcoding.gui.app
-```
-
-**Double-click launcher (Windows):** run once to drop a brain-icon shortcut on your Desktop, then
-just double-click it (no console window):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\make_launcher.ps1
 ```
 
 ## Development
