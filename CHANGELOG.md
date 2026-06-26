@@ -93,7 +93,15 @@ UP (downstream `rpcode2trials` / word-lists are still lexical-only and come late
   flag makes `loadAnnotsToDict` look one level deeper — **UP-only**, lexical tasks read flat as
   before. (Marked TODO: remove once the dataset is flattened.)
 
-### Editor performance & interaction (`fix/editor-performance`, `fix/editor-interaction`)
+### Denoise — noise-profile reduction (`feat/editor-denoise`)
+
+- **Real noise reduction in the editor**, replacing the placeholder (which only marked the step
+  done). Audacity's two-step flow: select a noise-only span and click **🔇 Noise profile**, set a
+  **strength** (0–100%), then **Denoise** — spectral subtraction (`noisereduce`) across the whole
+  recording. `core/audio/denoise.py` always works from the *raw* signal (preserved once as
+  `allblocks_original.wav`), so re-applying at a different strength never compounds; the result is
+  written to `allblocks.wav` and the editor reloads it. Runs on a worker thread (GUI stays
+  responsive); the Denoise step opens the editor and is marked done once reduction is applied.
 
 - **Label virtualization:** only the labels in view are rendered (recycled pool, capped); the
   response-coding editor no longer freezes/crashes on the thousands-of-intervals tiers (a working

@@ -43,6 +43,9 @@ class StepRow(QWidget):
         self._state = EffectiveState.NOT_STARTED
         self._last: tuple = (EffectiveState.NOT_STARTED, "", None, False)
         self._manual = self._spec.kind == StepKind.MANUAL
+        # Denoise isn't a manual step but is also done in the editor (it needs the waveform to
+        # pick a noise profile), so it gets the "Open editor" button too — just no "manual" tag.
+        self._opens_editor = self._manual or step == Step.DENOISE
 
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 13, 0, 13)
@@ -193,9 +196,11 @@ class StepRow(QWidget):
         self._apply_button(state)
 
     def _apply_button(self, state: EffectiveState) -> None:
-        if self._spec.kind == StepKind.MANUAL:
+        if self._opens_editor:
             self._btn.setText("Open editor")
-            self._btn.setEnabled(state in _OPENABLE)
+            # Manual steps open when needs-manual/done/stale; Denoise opens whenever it's unblocked.
+            openable = _OPENABLE | ({EffectiveState.NOT_STARTED} if not self._manual else set())
+            self._btn.setEnabled(state in openable)
             # Always the manual-purple outline (matches the prototype), even when locked.
             purple = self._theme.state_color(EffectiveState.NEEDS_MANUAL)
             self._color_button(purple, weight="600", pad="7px 14px")

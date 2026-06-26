@@ -33,20 +33,30 @@ def _response_tier(results_dir: Path) -> Tier:
     return Tier("response", list(src.intervals)) if src is not None else Tier("response", [])
 
 
-def tiers_for_step(results_dir: Path | str, step: Step) -> tuple[list[TierSpec], Path]:
-    """Return ``(tier_specs, save_path)`` for a manual, editor-backed step.
+def tiers_for_step(results_dir: Path | str, step: Step) -> tuple[list[TierSpec], Path | None]:
+    """Return ``(tier_specs, save_path)`` for an editor-backed step (save_path None for denoise).
 
     Raises ``ValueError`` for steps that aren't edited in the audio editor.
     """
     results_dir = Path(results_dir)
     is_first = step == Step.MARK_FIRST_STIMS
     is_resp = step == Step.RESPONSE_CODING
-    if not (is_first or is_resp):
-        raise ValueError(f"{step} is not an editor-backed manual step")
+    is_denoise = step == Step.DENOISE
+    if not (is_first or is_resp or is_denoise):
+        raise ValueError(f"{step} is not an editor-backed step")
 
     first = _load_or_empty(results_dir / paths.FIRST_STIMS_TXT, "first_stims")
     cond = _load_or_empty(results_dir / paths.CONDITION_EVENTS_TXT, "condition_events")
     cue = _load_or_empty(results_dir / paths.CUE_EVENTS_TXT, "cue_events")
+    if is_denoise:
+        # Denoise edits the audio, not labels: show the reference tiers read-only, nothing editable
+        # and no label save target (it completes via the audio write, not a tier save).
+        denoise_specs: list[TierSpec] = [
+            ("first_stims", first, False),
+            ("condition_events", cond, False),
+            ("cue_events", cue, False),
+        ]
+        return denoise_specs, None
     specs: list[TierSpec] = [
         ("first_stims", first, is_first),
         ("condition_events", cond, False),

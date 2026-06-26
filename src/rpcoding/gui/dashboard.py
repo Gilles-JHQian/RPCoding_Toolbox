@@ -488,7 +488,9 @@ class Dashboard(QWidget):
         if self._session is None:
             return
         spec: StepSpec = _SPECS[step]
-        if spec.kind == StepKind.MANUAL:
+        # Manual steps and Denoise are done in the editor (Denoise needs the waveform to pick a
+        # noise profile), so open it instead of running a headless action.
+        if spec.kind == StepKind.MANUAL or step == Step.DENOISE:
             self.open_editor.emit(self._session, step)
             return
         # Single automated step: run inline (no popup) — just flip the row to "running".

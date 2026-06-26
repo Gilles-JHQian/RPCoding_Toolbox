@@ -68,8 +68,17 @@ def test_response_tier_falls_back_to_mfa(tmp_path):
     assert [iv.label for iv in resp.intervals] == ["no"]
 
 
+def test_tiers_for_step_denoise(tmp_path):
+    # Denoise opens the editor too, but only to pick a noise profile: reference tiers are read-only,
+    # nothing is editable, and there's no label save target (it completes via the audio write).
+    specs, save_path = tiers_for_step(tmp_path, Step.DENOISE)
+    assert save_path is None
+    assert [name for name, _t, _e in specs] == ["first_stims", "condition_events", "cue_events"]
+    assert [name for name, _t, e in specs if e] == []
+
+
 def test_tiers_for_step_rejects_auto_step(tmp_path):
-    with pytest.raises(ValueError, match="not an editor-backed manual step"):
+    with pytest.raises(ValueError, match="not an editor-backed step"):
         tiers_for_step(tmp_path, Step.CONCAT_WAVS)
 
 

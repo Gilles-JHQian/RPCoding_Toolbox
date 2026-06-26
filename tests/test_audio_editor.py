@@ -219,3 +219,47 @@ def test_load_synth_wav(qtbot, tmp_path):
     assert c.pyramid_path(key).exists()
     assert list((cache / key / "spectro").glob("*/spec.npy"))
     assert abs(ed.duration() - 1.0) < 0.05
+
+
+def test_denoise_profile_enables_button(qtbot, tmp_path):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.configure_denoise(tmp_path / "allblocks.wav", tmp_path / "allblocks_original.wav")
+    assert not ed._toolbar._denoise_btn.isEnabled()  # no profile yet
+    ed.set_selection((1.0, 2.0))
+    ed._set_noise_profile()  # capture the selection as the noise profile
+    assert ed._noise_profile == (1.0, 2.0)
+    assert ed._toolbar._denoise_btn.isEnabled()
+
+
+def test_denoise_apply_writes_result_and_backs_up_raw(qtbot, tmp_path, monkeypatch):
+    pytest.importorskip("noisereduce")
+    from rpcoding.core.audio.io import read_wav, write_wav
+
+    fs = 8000
+    rng = np.random.default_rng(0)
+    t = np.arange(2 * fs) / fs
+    tone = 0.3 * np.sin(2 * np.pi * 220 * t)
+    tone[fs:] = 0.0  # second half is noise-only
+    sig = (tone + 0.05 * rng.standard_normal(2 * fs)).astype(np.float32)
+    allblocks = tmp_path / "allblocks.wav"
+    original = tmp_path / "allblocks_original.wav"
+    write_wav(allblocks, sig, fs)
+
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ed.configure_denoise(allblocks, original)
+    ed.set_selection((1.2, 1.8))  # a noise-only span
+    ed._set_noise_profile()
+    # Stub the post-denoise reload: the real reload spawns render workers we don't need here (and
+    # whose dangling threads would crash teardown). load() is covered by test_load_synth_wav.
+    reloaded: list = []
+    monkeypatch.setattr(ed, "load", lambda *a, **k: reloaded.append(a))
+    with qtbot.waitSignal(ed.denoised, timeout=20000):
+        ed._apply_denoise(1.0)
+    assert reloaded  # the result was reloaded after denoising
+
+    assert original.exists()  # the raw signal is preserved
+    out, _ = read_wav(allblocks)
+    noise = slice(int(1.2 * fs), 2 * fs)
+    assert np.std(out[noise]) < np.std(sig[noise]) * 0.85  # noise floor reduced on disk

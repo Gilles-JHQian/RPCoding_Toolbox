@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow
 from rpcoding.core import paths
 from rpcoding.core.config import AppConfig
 from rpcoding.core.rpcode.errors import response_tags
+from rpcoding.core.steps import Step
 from rpcoding.gui.dashboard import Dashboard
 from rpcoding.gui.editor import AudioEditor
 from rpcoding.gui.editor_loader import tiers_for_step
@@ -33,6 +34,7 @@ class MainWindow(QMainWindow):
         self._editor.setWindowFlag(Qt.WindowType.Window, True)
         self._editor.resize(1240, 820)
         self._editor.saved.connect(self._on_editor_saved)
+        self._editor.denoised.connect(self._on_denoised)
         self._editor.back_requested.connect(self._close_editor)
         self._editor.theme_toggle_requested.connect(self.toggle_theme)
         self._editing: tuple | None = None  # (SubjectSession, Step) currently open in the editor
@@ -58,6 +60,10 @@ class MainWindow(QMainWindow):
         self._editor.set_tiers(specs)
         self._editor.set_response_tags(response_tags(session.task))  # per-task quick-tag palette
         self._editor.configure_save(save_path)
+        self._editor.configure_denoise(
+            session.output_path(paths.ALLBLOCKS_WAV),
+            session.output_path(paths.ALLBLOCKS_ORIGINAL_WAV),
+        )
         wav = self._editor_wav(session)
         if wav is not None:
             self._editor.load(wav, session.results_dir / ".rpcoding" / "cache")
@@ -90,6 +96,15 @@ class MainWindow(QMainWindow):
             return
         session, step = self._editing
         session.record_done(step)
+        self._dashboard.refresh()
+
+    def _on_denoised(self) -> None:
+        """Noise reduction was applied in the editor — mark the Denoise step done (whatever step
+        opened the editor) and refresh the dashboard."""
+        if self._editing is None:
+            return
+        session, _step = self._editing
+        session.record_done(Step.DENOISE)
         self._dashboard.refresh()
 
     def _close_editor(self) -> None:

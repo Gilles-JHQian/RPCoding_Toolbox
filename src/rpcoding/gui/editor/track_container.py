@@ -13,6 +13,7 @@ from PySide6.QtCore import QEvent, QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLineEdit, QVBoxLayout, QWidget
 
+from rpcoding.core.audio.denoise import denoise_allblocks
 from rpcoding.core.audio.io import duration_seconds
 from rpcoding.core.audio.render.cache import AudioRenderCache
 from rpcoding.core.labels import Interval, Tier, write_tier
@@ -28,6 +29,7 @@ from rpcoding.gui.editor.spectrogram_lane import SpectrogramLane
 from rpcoding.gui.editor.toolbar import EditorToolbar
 from rpcoding.gui.editor.trial_info_panel import TrialInfoPanel
 from rpcoding.gui.editor.waveform_lane import WaveformLane
+from rpcoding.gui.error_dialog import show_error
 from rpcoding.gui.theme import DARK_THEME, Theme
 from rpcoding.gui.workers.worker import run_in_thread
 
@@ -96,6 +98,7 @@ class AudioEditor(QWidget):
     load_finished = Signal()
     load_failed = Signal(str)
     saved = Signal()
+    denoised = Signal()  # noise reduction was applied to allblocks.wav (the audio changed on disk)
     back_requested = Signal()
     theme_toggle_requested = Signal()  # the toolbar ◑ button; the app flips dark/light
     # Internal: the render workers emit these (cross-thread); connected to UI-thread slots so the
@@ -127,9 +130,15 @@ class AudioEditor(QWidget):
         self._restoring = False
         self._cursor: float | None = None
         self._wav_path: Path | None = None
+        self._cache_dir: Path | None = None
         self._row = 0
         self._sel_updating = False
         self._sel_regions: list[pg.LinearRegionItem] = []
+        # Denoise: the captured noise-profile span + the audio files it writes (set per session).
+        self._noise_profile: tuple[float, float] | None = None
+        self._denoise_allblocks: Path | None = None
+        self._denoise_original: Path | None = None
+        self._denoise_job: tuple | None = None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -145,6 +154,8 @@ class AudioEditor(QWidget):
         self._toolbar.add_label_requested.connect(self._create_label_from_selection)
         self._toolbar.copy_requested.connect(self._copy_active)
         self._toolbar.paste_requested.connect(self._paste)
+        self._toolbar.set_noise_profile_requested.connect(self._set_noise_profile)
+        self._toolbar.denoise_requested.connect(self._apply_denoise)
         self._toolbar.theme_toggle_requested.connect(self.theme_toggle_requested.emit)
         outer.addWidget(self._toolbar)
 
@@ -522,6 +533,7 @@ class AudioEditor(QWidget):
         # Open zoomed in so only a handful of labels render on open (no full-file render freeze).
         self.set_visible_range(0.0, min(self._duration, _INITIAL_VIEW_S) or 1.0)
         cache_root = Path(cache_dir) if cache_dir else wav_path.parent / ".rpcoding" / "cache"
+        self._cache_dir = cache_root  # reused when reloading after a denoise
         content_key = AudioRenderCache(cache_root).content_key(wav_path)
 
         self._load_token += 1
@@ -558,6 +570,61 @@ class AudioEditor(QWidget):
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
         self._player.stop()  # don't keep playing audio after the editor window closes
         super().closeEvent(event)
+
+    # ---- denoise (Audacity-style: noise profile + strength) ----
+    def configure_denoise(self, allblocks_path, original_path) -> None:
+        """Set the audio files denoise writes (allblocks.wav; the raw is kept as the original).
+
+        Resets any captured noise profile — called when (re)opening the editor on a subject.
+        """
+        self._denoise_allblocks = Path(allblocks_path) if allblocks_path else None
+        self._denoise_original = Path(original_path) if original_path else None
+        self._noise_profile = None
+        self._toolbar.set_noise_profile(None)
+
+    def _set_noise_profile(self) -> None:
+        """Capture the current selection as the noise profile (a noise-only span)."""
+        span = self._sel.span()
+        if span is None:
+            self._toolbar.set_status("Select a noise-only span first, then set the profile")
+            return
+        self._noise_profile = span
+        self._toolbar.set_noise_profile(span)
+        self._toolbar.set_status(f"Noise profile: {span[0]:.2f}–{span[1]:.2f}s")
+
+    def _apply_denoise(self, strength: float) -> None:
+        """Reduce noise across the whole file (profile + strength), then reload the result."""
+        if self._noise_profile is None or self._denoise_allblocks is None:
+            self._toolbar.set_status("Set a noise profile first")
+            return
+        start, end = self._noise_profile
+        self._player.stop()
+        self._toolbar.set_denoise_busy(True)
+        self._toolbar.set_busy("Reducing noise…")
+
+        def done(_result) -> None:
+            self._toolbar.set_denoise_busy(False)
+            # Reload the just-written allblocks.wav so the spectrogram/waveform show the result.
+            self.load(self._denoise_allblocks, self._cache_dir)
+            self._toolbar.set_status("Noise reduced")
+            self.denoised.emit()
+
+        def failed(message: str) -> None:
+            self._toolbar.set_denoise_busy(False)
+            self._toolbar.build_done()
+            show_error("Denoise failed", message, parent=self)
+
+        self._denoise_job = run_in_thread(
+            self,
+            denoise_allblocks,
+            self._denoise_allblocks,
+            self._denoise_original,
+            start,
+            end,
+            strength,
+            on_result=done,
+            on_error=failed,
+        )
 
     # ---- keyboard editing ----
     def event(self, e) -> bool:  # noqa: N802 - Qt override
