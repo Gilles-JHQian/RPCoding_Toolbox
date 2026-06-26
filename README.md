@@ -38,6 +38,22 @@ conda activate rpcoding
 On Windows with conda installed at a non-default location, invoke conda by full path, e.g.
 `D:\conda\miniconda3\condabin\conda.bat env create -f environment.yml`.
 
+## Launch
+
+From the command line (any OS):
+
+```bash
+conda activate rpcoding
+rpcoding-gui            # or:  python -m rpcoding.gui.app
+```
+
+**Double-click launcher (Windows):** run once to drop a brain-icon shortcut on your Desktop, then
+just double-click it (no console window):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\make_launcher.ps1
+```
+
 ## Development
 
 ```bash

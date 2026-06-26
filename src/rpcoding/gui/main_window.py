@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication, QMainWindow
 
 from rpcoding.core import paths
 from rpcoding.core.config import AppConfig
 from rpcoding.core.rpcode.errors import response_tags
 from rpcoding.core.steps import Step
+from rpcoding.gui.assets import icon_path
 from rpcoding.gui.dashboard import Dashboard
 from rpcoding.gui.error_dialog import show_error
 from rpcoding.gui.hover_cursor import install_hover_cursor
@@ -19,7 +21,9 @@ from rpcoding.gui.theme import DARK_THEME, LIGHT_THEME, Theme, qss
 class MainWindow(QMainWindow):
     def __init__(self, config: AppConfig, theme: Theme = DARK_THEME):
         super().__init__()
-        self.setWindowTitle("RPCoding Toolbox")
+        self.setWindowTitle("Cogan Lab RP Coding Toolbox")
+        if icon_path().exists():
+            self.setWindowIcon(QIcon(str(icon_path())))
         self.resize(1180, 740)
         self._theme = theme
 
