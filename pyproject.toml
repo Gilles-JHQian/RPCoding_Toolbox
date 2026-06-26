@@ -48,6 +48,8 @@ where = ["src"]
 [tool.setuptools.package-data]
 # Bundled lab word/nonword reference lists used by the write-Trials step.
 "rpcoding.core.rpcode" = ["wordlists/*.mat"]
+# The app/brain icon (window + taskbar + launcher shortcut).
+"rpcoding.gui.assets" = ["*.png", "*.ico"]
 
 [tool.black]
 line-length = 100
