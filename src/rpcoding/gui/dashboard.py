@@ -13,7 +13,9 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -198,10 +200,40 @@ class Dashboard(QWidget):
         self._sub_path.setObjectName("SubPath")
         hl.addWidget(self._sub_path)
         hl.addStretch(1)
+        self._flag_btn = QPushButton("⚑ Flag")
+        self._flag_btn.setObjectName("Icon")
+        self._flag_btn.setCheckable(True)
+        self._flag_btn.setEnabled(False)
+        self._flag_btn.setToolTip("Manually mark this subject as having a problem")
+        self._flag_btn.toggled.connect(self._on_flag_toggled)
+        hl.addWidget(self._flag_btn)
         self._banner = QLabel("")
         self._banner.setObjectName("Banner")
         hl.addWidget(self._banner)
         lay.addWidget(head)
+
+        # Free-text notes for the selected subject (behavioural coding is messy — let the user jot
+        # state per subject). Saved (debounced) into the subject's manifest.
+        notes_bar = QFrame()
+        notes_bar.setObjectName("PanelHeader")
+        nl = QHBoxLayout(notes_bar)
+        nl.setContentsMargins(24, 8, 24, 10)
+        nl.setSpacing(10)
+        notes_cap = QLabel("Notes")
+        notes_cap.setObjectName("Caption")
+        nl.addWidget(notes_cap, 0, Qt.AlignmentFlag.AlignTop)
+        self._notes = QPlainTextEdit()
+        self._notes.setObjectName("NotesField")
+        self._notes.setPlaceholderText("Manual notes about this subject…")
+        self._notes.setFixedHeight(48)
+        self._notes.setEnabled(False)
+        self._notes.textChanged.connect(lambda: self._notes_timer.start(600))
+        nl.addWidget(self._notes, 1)
+        lay.addWidget(notes_bar)
+        # Debounced notes save (avoid writing JSON on every keystroke).
+        self._notes_timer = QTimer(self)
+        self._notes_timer.setSingleShot(True)
+        self._notes_timer.timeout.connect(self._save_notes)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -240,12 +272,14 @@ class Dashboard(QWidget):
         self._status_btn.clicked.connect(self._show_last_log)
         lay.addWidget(self._status_btn)
         lay.addStretch(1)
-        self._open_results_btn = QPushButton("📂 Open results folder")
-        self._open_results_btn.setObjectName("Icon")
-        self._open_results_btn.setToolTip("Open this subject's response-coding results folder")
-        self._open_results_btn.setEnabled(False)
-        self._open_results_btn.clicked.connect(self._open_results_folder)
-        lay.addWidget(self._open_results_btn)
+        self._open_folder_btn = QPushButton("📂 Folders")
+        self._open_folder_btn.setObjectName("Icon")
+        self._open_folder_btn.setToolTip("Open a key folder for this subject")
+        self._open_folder_btn.setEnabled(False)
+        folder_menu = QMenu(self._open_folder_btn)
+        folder_menu.aboutToShow.connect(self._populate_folder_menu)
+        self._open_folder_btn.setMenu(folder_menu)
+        lay.addWidget(self._open_folder_btn)
         return bar
 
     def _set_status(self, text: str) -> None:
@@ -309,14 +343,75 @@ class Dashboard(QWidget):
         log = self._session.results_dir / "mfa_run.log"
         self._last_log_path = log if log.exists() else None
 
-    def _open_results_folder(self) -> None:
+    # ---- folder shortcuts ----
+    @staticmethod
+    def _dir_exists(path) -> bool:
+        try:
+            return Path(path).is_dir()
+        except OSError:  # un-stat-able cloud placeholder
+            return False
+
+    def _blocks_dir(self):
+        """The raw per-block audio dir, or None if it can't be resolved for this subject/task."""
+        try:
+            return self._session.all_blocks_dir
+        except Exception:  # noqa: BLE001 - resolution can fail (folder naming varies); just skip it
+            return None
+
+    def _populate_folder_menu(self) -> None:
+        menu = self._open_folder_btn.menu()
+        menu.clear()
         if self._session is None:
             return
-        rd = self._session.results_dir
-        if not rd.exists():
-            self._toast("Results folder doesn't exist yet — run the earlier steps first")
+        s = self._session
+        entries = [
+            ("Results folder", s.results_dir),
+            ("D_Data folder (Trials.mat)", s.d_data_subject_dir),
+            ("Raw audio blocks", self._blocks_dir()),
+            ("Data root (CoganLab)", Path(self._config.droot)),
+        ]
+        for label, path in entries:
+            act = menu.addAction(label)
+            if path is not None and self._dir_exists(path):
+                act.triggered.connect(lambda _checked=False, p=path: self._open_folder(p))
+            else:
+                act.setEnabled(False)  # not present yet (e.g. results before any step ran)
+
+    def _open_folder(self, path) -> None:
+        if self._dir_exists(path):
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
+        else:
+            self._toast("That folder doesn't exist yet")
+
+    # ---- per-subject notes + problem flag ----
+    def _save_notes(self) -> None:
+        if self._session is not None:
+            self._session.set_notes(self._notes.toPlainText())
+
+    def _flush_notes(self) -> None:
+        """Persist any pending (debounced) notes edit before switching away from this subject."""
+        if self._session is not None and self._notes_timer.isActive():
+            self._notes_timer.stop()
+            self._session.set_notes(self._notes.toPlainText())
+
+    def _on_flag_toggled(self, checked: bool) -> None:
+        if self._session is None:
             return
-        QDesktopServices.openUrl(QUrl.fromLocalFile(str(rd)))
+        self._session.set_flagged(checked)
+        self._update_flag_button(checked)
+        done, total, state = self._session.summary()
+        self._subjects.set_summary(self._session.subject, done, total, state)
+        self._refresh_states()
+
+    def _update_flag_button(self, flagged: bool) -> None:
+        self._flag_btn.setText("⚑ Flagged" if flagged else "⚑ Flag")
+        if flagged:
+            color = self._theme.state_color(EffectiveState.FLAGGED)
+            self._flag_btn.setStyleSheet(
+                f"color: {color}; border: 1px solid {color}; font-weight: 600;"
+            )
+        else:
+            self._flag_btn.setStyleSheet("")
 
     # ---- backend wiring ----
     @property
@@ -374,21 +469,42 @@ class Dashboard(QWidget):
             self._summary_timer.start()  # next subject on the next event-loop tick
 
     def _on_task_changed(self) -> None:
+        self._flush_notes()
         self._session = None
         self._last_log_path = None
-        self._open_results_btn.setEnabled(False)
+        self._open_folder_btn.setEnabled(False)
         self._set_status("Ready")
         self._header.setText("Select a subject")
         self._sub_path.setText("")
         self._banner.setText("")
+        self._notes.blockSignals(True)
+        self._notes.clear()
+        self._notes.blockSignals(False)
+        self._notes.setEnabled(False)
+        self._flag_btn.blockSignals(True)
+        self._flag_btn.setChecked(False)
+        self._flag_btn.blockSignals(False)
+        self._flag_btn.setEnabled(False)
+        self._update_flag_button(False)
         for row in self._rows.values():
             row.set_state(EffectiveState.NOT_STARTED)
         self._scan()
 
     def _on_subject(self, subject: str) -> None:
+        self._flush_notes()  # save any pending notes for the previously selected subject
         self._session = SubjectSession(self._config, self.current_task, subject)
         self._last_log_path = None  # fall back to this subject's own run log
-        self._open_results_btn.setEnabled(True)
+        self._open_folder_btn.setEnabled(True)
+        # Load this subject's notes + flag without re-triggering their change handlers.
+        self._notes.blockSignals(True)
+        self._notes.setPlainText(self._session.notes)
+        self._notes.blockSignals(False)
+        self._notes.setEnabled(True)
+        self._flag_btn.blockSignals(True)
+        self._flag_btn.setChecked(self._session.flagged)
+        self._flag_btn.blockSignals(False)
+        self._flag_btn.setEnabled(True)
+        self._update_flag_button(self._session.flagged)
         self._set_status(f"{subject} selected")
         self._refresh_states()
 
@@ -452,7 +568,10 @@ class Dashboard(QWidget):
         done = sum(1 for s in states.values() if s == EffectiveState.DONE)
         stale = sum(1 for s in states.values() if s == EffectiveState.STALE)
         self._sub_path.setText(f"{self.current_task.value} · results/{self._session.subject}/")
-        if stale:
+        if self._session.flagged:
+            self._banner.setText("⚑ Flagged — manual problem")
+            self._banner.setStyleSheet(f"color: {self._theme.state_color(EffectiveState.FLAGGED)};")
+        elif stale:
             self._banner.setText(f"⚠ {stale} step(s) stale — upstream edited")
             self._banner.setStyleSheet(f"color: {self._theme.state_color(EffectiveState.STALE)};")
         else:

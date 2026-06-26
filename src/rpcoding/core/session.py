@@ -189,11 +189,17 @@ class SubjectSession:
         return {s: self.effective_state(s, memo) for s in STEP_SPECS}
 
     def summary(self) -> tuple[int, int, EffectiveState]:
-        """``(done, total, representative_state)`` for the subject-list row."""
+        """``(done, total, representative_state)`` for the subject-list row.
+
+        A manual ``flagged`` mark wins over the computed status (the user is deliberately tracking a
+        problem); otherwise error > done > stale > not-started.
+        """
         states = list(self.effective_states().values())
         total = len(states)
         done = sum(1 for s in states if s == EffectiveState.DONE)
-        if EffectiveState.ERROR in states:
+        if self.manifest.flagged:
+            rep = EffectiveState.FLAGGED
+        elif EffectiveState.ERROR in states:
             rep = EffectiveState.ERROR
         elif done == total:
             rep = EffectiveState.DONE
@@ -202,6 +208,29 @@ class SubjectSession:
         else:
             rep = EffectiveState.NOT_STARTED
         return done, total, rep
+
+    # ---- manual per-subject metadata (notes + problem flag) ----
+    @property
+    def notes(self) -> str:
+        return self.manifest.notes
+
+    def set_notes(self, text: str) -> None:
+        """Persist free-text notes for this subject (creates the manifest if needed)."""
+        if text == self.manifest.notes:
+            return
+        self.manifest.notes = text
+        self.save()
+
+    @property
+    def flagged(self) -> bool:
+        return self.manifest.flagged
+
+    def set_flagged(self, value: bool) -> None:
+        """Set/clear the manual 'has a problem' flag for this subject."""
+        if bool(value) == self.manifest.flagged:
+            return
+        self.manifest.flagged = bool(value)
+        self.save()
 
     def step_error(self, step: Step) -> str | None:
         """The recorded error message for a step (for the dashboard chip tooltip), if any."""

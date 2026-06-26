@@ -76,6 +76,7 @@ _STATE_COLORS: dict[EffectiveState, tuple[str, str]] = {
     EffectiveState.NEEDS_MANUAL: ("#9a7be0", "#7c5fd0"),
     EffectiveState.STALE: ("#d6a13a", "#bf8a1f"),
     EffectiveState.ERROR: ("#e5564d", "#d23b32"),
+    EffectiveState.FLAGGED: ("#e8568f", "#d6356f"),  # manual "has a problem" — a distinct rose/pink
 }
 _RUNNING = ("#4d96ff", "#2f6fe0")
 
@@ -87,6 +88,7 @@ STATE_LABELS: dict[EffectiveState, str] = {
     EffectiveState.NEEDS_MANUAL: "Manual",
     EffectiveState.STALE: "Stale",
     EffectiveState.ERROR: "Error",
+    EffectiveState.FLAGGED: "Flagged",
 }
 RUNNING_LABEL = "Running"
 
@@ -207,6 +209,10 @@ def qss(theme: Theme) -> str:
 
     QPlainTextEdit {{ background: {p['lane-bg']}; border: 1px solid {p['border']};
                       border-radius: 7px; font-family: {MONO_FONT}; }}
+    QPlainTextEdit#NotesField {{ background: {p['btn-bg']}; border: 1px solid {p['btn-border']};
+                                 border-radius: 7px; font-family: {UI_FONT}; font-size: 12px;
+                                 padding: 3px 7px; color: {p['text-pri']}; }}
+    QPlainTextEdit#NotesField:focus {{ border-color: {p['accent']}; }}
     QProgressBar {{ background: {p['lane-bg']}; border: 1px solid {p['border']};
                     border-radius: 4px; height: 8px; text-align: center; color: {p['text-sec']};
                     font-size: 10px; }}

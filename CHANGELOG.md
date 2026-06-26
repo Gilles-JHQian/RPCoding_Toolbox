@@ -114,6 +114,25 @@ UP (downstream `rpcode2trials` / word-lists are still lexical-only and come late
   clickable widget (buttons, combo boxes) the hand cursor on mouse-over (and the plain arrow when
   disabled) — covering dynamically created controls that a stylesheet can't reach.
 
+### Subject notes, problem flag, folder shortcuts + first-run dialog (`feat/subject-gadgets`)
+
+- **Per-subject notes.** Selecting a subject shows a free-text notes field (behavioural coding is
+  messy and per-subject state varies); notes are saved (debounced) into the subject's manifest.
+- **Manual "has a problem" flag.** A new ⚑ Flag toggle marks a subject as problematic — a distinct
+  rose/pink state (`EffectiveState.FLAGGED`) that takes precedence over the computed status in the
+  subject list dot + the detail banner. Stored in the manifest.
+- **Folder shortcuts.** The status-bar button is now a 📂 Folders menu opening any of the subject's
+  key folders — results, the D_Data folder (Trials.mat), the raw audio blocks, and the data root —
+  greying out the ones that don't exist yet.
+- **First-run dialog.** First launch (or a missing saved data root) now shows an explanation of
+  *what* to pick — the CoganLab data root containing `D_Data` / `ECoG_Task_Data` — with a
+  **Choose folder…** button, instead of popping a bare folder picker with no context. It softly
+  warns if the chosen folder doesn't look like a CoganLab root, but still lets you continue.
+- **Cross-OS review.** Audited the app code for OS-specific assumptions: paths are all `pathlib`,
+  folders open via `QDesktopServices` (Explorer/Finder/file-manager), the config dir already
+  branches APPDATA vs XDG, and no drive letters / backslash paths are hardcoded. The MFA pipeline's
+  earlier Windows-isms were already fixed (`resolve_stim_dir`, aligner PATH, trailing-dot).
+
 ### Faster startup (`perf/lazy-startup`)
 
 - **The audio editor is built lazily on first open, not at launch.** Profiling showed startup was
