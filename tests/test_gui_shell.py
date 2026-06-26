@@ -183,3 +183,20 @@ def test_main_window_theme_toggle(qtbot, tmp_path):
     assert win._theme.name == "dark"
     win.toggle_theme()
     assert win._theme.name == "light"
+    assert win._editor is None  # the editor is built lazily on first open, not at startup
+
+
+def test_app_import_does_not_pull_the_editor():
+    # Lazy editor: importing the app must not load pyqtgraph / scipy.signal (~0.7s + 0.5s) — they
+    # belong to the editor and are deferred to first open so startup stays fast. Run in a fresh
+    # interpreter since other tests in this process import the editor.
+    import subprocess
+    import sys
+
+    code = (
+        "import rpcoding.gui.app, sys; "
+        "print('pyqtgraph' in sys.modules, 'scipy.signal' in sys.modules)"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "False False", out.stdout
