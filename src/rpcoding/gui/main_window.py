@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication, QMainWindow
 
 from rpcoding.core import paths
@@ -12,6 +12,9 @@ from rpcoding.core.steps import Step
 from rpcoding.gui.dashboard import Dashboard
 from rpcoding.gui.editor import AudioEditor
 from rpcoding.gui.editor_loader import tiers_for_step
+from rpcoding.gui.error_dialog import show_error
+from rpcoding.gui.hover_cursor import install_hover_cursor
+from rpcoding.gui.loading_dialog import LoadingDialog
 from rpcoding.gui.theme import DARK_THEME, LIGHT_THEME, Theme, qss
 
 
@@ -21,6 +24,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("RPCoding Toolbox")
         self.resize(1180, 740)
         self._theme = theme
+
+        # Pointing-hand cursor on every clickable widget (app-wide event filter).
+        app = QApplication.instance()
+        self._hover_cursor = install_hover_cursor(app) if app is not None else None
 
         self._dashboard = Dashboard(config, theme)
         self._dashboard.theme_toggle_requested.connect(self.toggle_theme)
@@ -37,7 +44,17 @@ class MainWindow(QMainWindow):
         self._editor.denoised.connect(self._on_denoised)
         self._editor.back_requested.connect(self._close_editor)
         self._editor.theme_toggle_requested.connect(self.toggle_theme)
+        self._editor.load_progress.connect(self._on_editor_load_progress)
+        self._editor.load_finished.connect(self._on_editor_loaded)
+        self._editor.load_failed.connect(self._on_editor_load_failed)
         self._editing: tuple | None = None  # (SubjectSession, Step) currently open in the editor
+
+        # A small loading popup shown while the editor's audio renders on open (delayed so a cached,
+        # instant load doesn't flash it). The editor stays hidden until the render finishes.
+        self._loading: LoadingDialog | None = None
+        self._loading_timer = QTimer(self)
+        self._loading_timer.setSingleShot(True)
+        self._loading_timer.timeout.connect(self._show_loading_if_pending)
 
         self.apply_theme(theme)
 
@@ -65,12 +82,48 @@ class MainWindow(QMainWindow):
             session.output_path(paths.ALLBLOCKS_ORIGINAL_WAV),
         )
         wav = self._editor_wav(session)
-        if wav is not None:
-            self._editor.load(wav, session.results_dir / ".rpcoding" / "cache")
+        if wav is None:
+            self._reveal_editor()  # nothing to render, just open
+            return
+        # Render in the background; show a loading popup (delayed) and reveal the editor once ready.
+        self._loading = LoadingDialog("Loading editor…", self)
+        self._loading.set_progress(0, "Loading audio…")
+        self._loading_timer.start(180)
+        self._editor.load(wav, session.results_dir / ".rpcoding" / "cache")
+
+    def _reveal_editor(self) -> None:
         self._editor.show()
         self._editor.raise_()
         self._editor.activateWindow()
         self._editor.setFocus()
+
+    def _show_loading_if_pending(self) -> None:
+        if self._loading is not None:
+            self._loading.show_centered()
+
+    def _close_loading(self) -> None:
+        self._loading_timer.stop()
+        if self._loading is not None:
+            self._loading.close()
+            self._loading = None
+
+    def _on_editor_load_progress(self, pct: int, message: str) -> None:
+        if self._loading is not None:
+            self._loading.set_progress(pct, message)
+
+    def _on_editor_loaded(self) -> None:
+        # Only relevant while opening (self._loading set); an in-editor reload (e.g. denoise) leaves
+        # the already-shown editor alone.
+        if self._loading is not None:
+            self._close_loading()
+            self._reveal_editor()
+
+    def _on_editor_load_failed(self, message: str) -> None:
+        was_opening = self._loading is not None
+        self._close_loading()
+        if was_opening:
+            self._reveal_editor()
+        show_error("Could not load the audio", message, parent=self)
 
     @staticmethod
     def _exists(p) -> bool:

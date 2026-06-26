@@ -97,6 +97,7 @@ class AudioEditor(QWidget):
     selection_changed = Signal(object)
     load_finished = Signal()
     load_failed = Signal(str)
+    load_progress = Signal(int, str)  # render progress (0..100) for a loading popup
     saved = Signal()
     denoised = Signal()  # noise reduction was applied to allblocks.wav (the audio changed on disk)
     back_requested = Signal()
@@ -540,6 +541,7 @@ class AudioEditor(QWidget):
         token = self._load_token
         self._pyr_ok = self._spec_ok = False
         self._toolbar.set_progress(0, "Building waveform + spectrogram…")
+        self.load_progress.emit(0, "Building waveform + spectrogram…")
 
         self._jobs.append(
             run_in_thread(
@@ -928,6 +930,7 @@ class AudioEditor(QWidget):
         self.waveform.set_source(pyr, wav_path)
         self._pyr_ok = True
         self._refresh()
+        self.load_progress.emit(50 * (self._pyr_ok + self._spec_ok), "Waveform ready…")
         self._maybe_finished()
 
     def _on_spectro(self, token: int, handle: dict) -> None:
@@ -936,6 +939,7 @@ class AudioEditor(QWidget):
         self.spectrogram.set_source(handle["spec_path"], handle["meta"])
         self._spec_ok = True
         self._refresh()
+        self.load_progress.emit(50 * (self._pyr_ok + self._spec_ok), "Spectrogram ready…")
         self._maybe_finished()
 
     def _maybe_finished(self) -> None:

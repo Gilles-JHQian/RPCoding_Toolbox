@@ -221,6 +221,25 @@ def test_load_synth_wav(qtbot, tmp_path):
     assert abs(ed.duration() - 1.0) < 0.05
 
 
+def test_load_emits_progress(qtbot, tmp_path):
+    pytest.importorskip("scipy")
+    pytest.importorskip("soundfile")
+    from rpcoding.core.audio.io import write_wav
+
+    fs = 16000
+    x = (0.3 * np.sin(2 * np.pi * 440 * np.arange(fs) / fs)).astype(np.float32)
+    wav = tmp_path / "allblocks.wav"
+    write_wav(wav, x, fs)
+
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    ticks: list[int] = []
+    ed.load_progress.connect(lambda p, _m: ticks.append(p))
+    with qtbot.waitSignal(ed.load_finished, timeout=20000):
+        ed.load(wav, tmp_path / "cache")
+    assert ticks[0] == 0 and 100 in ticks  # 0% at start, 100% when both renders are ready
+
+
 def test_denoise_profile_enables_button(qtbot, tmp_path):
     ed = AudioEditor(DARK_THEME)
     qtbot.addWidget(ed)
