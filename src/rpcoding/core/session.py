@@ -191,19 +191,22 @@ class SubjectSession:
     def summary(self) -> tuple[int, int, EffectiveState]:
         """``(done, total, representative_state)`` for the subject-list row.
 
-        A manual ``flagged`` mark wins over the computed status (the user is deliberately tracking a
-        problem); otherwise error > done > stale > not-started.
+        Optional steps (Denoise) don't count toward completion — a subject is "done" (green) once
+        every **required** step is done, whether or not the optional ones ran. A manual ``flagged``
+        mark wins over the computed status; otherwise error > done > stale > not-started, over the
+        required steps only.
         """
-        states = list(self.effective_states().values())
-        total = len(states)
-        done = sum(1 for s in states if s == EffectiveState.DONE)
+        states = self.effective_states()
+        required = [s for step, s in states.items() if STEP_SPECS[step].kind != StepKind.OPTIONAL]
+        total = len(required)
+        done = sum(1 for s in required if s == EffectiveState.DONE)
         if self.manifest.flagged:
             rep = EffectiveState.FLAGGED
-        elif EffectiveState.ERROR in states:
+        elif EffectiveState.ERROR in required:
             rep = EffectiveState.ERROR
         elif done == total:
             rep = EffectiveState.DONE
-        elif EffectiveState.STALE in states:
+        elif EffectiveState.STALE in required:
             rep = EffectiveState.STALE
         else:
             rep = EffectiveState.NOT_STARTED

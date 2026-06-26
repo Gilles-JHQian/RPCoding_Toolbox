@@ -132,6 +132,9 @@ UP (downstream `rpcode2trials` / word-lists are still lexical-only and come late
   folders open via `QDesktopServices` (Explorer/Finder/file-manager), the config dir already
   branches APPDATA vs XDG, and no drive letters / backslash paths are hardcoded. The MFA pipeline's
   earlier Windows-isms were already fixed (`resolve_stim_dir`, aligner PATH, trailing-dot).
+- **Optional steps don't block completion.** The optional Denoise step no longer counts toward a
+  subject's done/total — a subject shows green once every *required* step is done, whether or not
+  Denoise ran (`SubjectSession.summary()` + the detail banner judge required steps only).
 
 ### Faster startup (`perf/lazy-startup`)
 
