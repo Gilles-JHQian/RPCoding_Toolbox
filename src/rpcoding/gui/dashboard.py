@@ -55,6 +55,10 @@ class Dashboard(QWidget):
         self._scan_token = 0
         # Path to the most recent run log (MFA writes mfa_run.log); the status bar reveals it.
         self._last_log_path: Path | None = None
+        # Resolving the raw-blocks dir walks the Box folder tree (slow), so the Folders menu does it
+        # off the UI thread and caches the result per subject (key = "task/subject").
+        self._blocks_cache: dict[str, Path | None] = {}
+        self._blocks_pending: set[str] = set()
         # Subject summaries are computed one-per-event-loop-tick so a big (cloud-synced) scan never
         # blocks the UI; a child QTimer is auto-cancelled on teardown.
         self._summary_queue: list[str] = []
@@ -351,12 +355,34 @@ class Dashboard(QWidget):
         except OSError:  # un-stat-able cloud placeholder
             return False
 
-    def _blocks_dir(self):
-        """The raw per-block audio dir, or None if it can't be resolved for this subject/task."""
-        try:
-            return self._session.all_blocks_dir
-        except Exception:  # noqa: BLE001 - resolution can fail (folder naming varies); just skip it
-            return None
+    def _add_folder_action(self, menu, label: str, path) -> None:
+        act = menu.addAction(label)
+        if path is not None and self._dir_exists(path):
+            act.triggered.connect(lambda _checked=False, p=path: self._open_folder(p))
+        else:
+            act.setEnabled(False)  # not present yet (e.g. results before any step ran)
+
+    def _add_blocks_action(self, menu, session) -> None:
+        """The raw-blocks dir is found by walking the Box folder tree — slow on cloud storage — so
+        resolve it off the UI thread and cache it; the menu shows '(finding…)' until it's ready."""
+        key = f"{session.task}/{session.subject}"
+        if key in self._blocks_cache:
+            self._add_folder_action(menu, "Raw audio blocks", self._blocks_cache[key])
+            return
+        act = menu.addAction("Raw audio blocks (finding…)")
+        act.setEnabled(False)
+        if key not in self._blocks_pending:
+            self._blocks_pending.add(key)
+            run_in_thread(
+                self,
+                lambda s=session: s.all_blocks_dir,  # the slow Box-tree walk (memoised on success)
+                on_result=lambda d, k=key: self._store_blocks(k, d),
+                on_error=lambda _msg, k=key: self._store_blocks(k, None),
+            )
+
+    def _store_blocks(self, key: str, path) -> None:
+        self._blocks_cache[key] = path
+        self._blocks_pending.discard(key)
 
     def _populate_folder_menu(self) -> None:
         menu = self._open_folder_btn.menu()
@@ -364,18 +390,10 @@ class Dashboard(QWidget):
         if self._session is None:
             return
         s = self._session
-        entries = [
-            ("Results folder", s.results_dir),
-            ("D_Data folder (Trials.mat)", s.d_data_subject_dir),
-            ("Raw audio blocks", self._blocks_dir()),
-            ("Data root (CoganLab)", Path(self._config.droot)),
-        ]
-        for label, path in entries:
-            act = menu.addAction(label)
-            if path is not None and self._dir_exists(path):
-                act.triggered.connect(lambda _checked=False, p=path: self._open_folder(p))
-            else:
-                act.setEnabled(False)  # not present yet (e.g. results before any step ran)
+        self._add_folder_action(menu, "Results folder", s.results_dir)
+        self._add_folder_action(menu, "D_Data folder (Trials.mat)", s.d_data_subject_dir)
+        self._add_blocks_action(menu, s)  # resolved off-thread (slow on Box)
+        self._add_folder_action(menu, "Data root (CoganLab)", Path(self._config.droot))
 
     def _open_folder(self, path) -> None:
         if self._dir_exists(path):
