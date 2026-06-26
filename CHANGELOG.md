@@ -116,6 +116,9 @@ UP (downstream `rpcode2trials` / word-lists are still lexical-only and come late
 
 ### Subject notes, problem flag, folder shortcuts + first-run dialog (`feat/subject-gadgets`)
 
+- **Current-step column.** Each subject in the list now shows which step it's at — the first
+  required step not yet done (e.g. "MFA", "Response", "✓ done") — next to its done/total, via a new
+  one-pass `SubjectSession.status()`.
 - **Per-subject notes.** Selecting a subject shows a free-text notes field (behavioural coding is
   messy and per-subject state varies); notes are saved (debounced) into the subject's manifest.
 - **Manual "has a problem" flag.** A new ⚑ Flag toggle marks a subject as problematic — a distinct

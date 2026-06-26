@@ -188,28 +188,36 @@ class SubjectSession:
         memo: dict[Step, EffectiveState] = {}
         return {s: self.effective_state(s, memo) for s in STEP_SPECS}
 
-    def summary(self) -> tuple[int, int, EffectiveState]:
-        """``(done, total, representative_state)`` for the subject-list row.
+    def status(self) -> tuple[int, int, EffectiveState, Step | None]:
+        """One-pass subject status: ``(done, total, representative_state, current_step)``.
 
-        Optional steps (Denoise) don't count toward completion — a subject is "done" (green) once
-        every **required** step is done, whether or not the optional ones ran. A manual ``flagged``
-        mark wins over the computed status; otherwise error > done > stale > not-started, over the
-        required steps only.
+        Optional steps (Denoise) are excluded from the counts and the frontier: ``current_step`` is
+        the first **required** step that isn't done (where the subject is "at"; ``None`` when all
+        required steps are done). A manual ``flagged`` mark wins over the computed status; otherwise
+        error > done > stale > not-started, over the required steps only.
         """
         states = self.effective_states()
-        required = [s for step, s in states.items() if STEP_SPECS[step].kind != StepKind.OPTIONAL]
+        required = [
+            (step, s) for step, s in states.items() if STEP_SPECS[step].kind != StepKind.OPTIONAL
+        ]
         total = len(required)
-        done = sum(1 for s in required if s == EffectiveState.DONE)
+        done = sum(1 for _step, s in required if s == EffectiveState.DONE)
+        current = next((step for step, s in required if s != EffectiveState.DONE), None)
         if self.manifest.flagged:
             rep = EffectiveState.FLAGGED
-        elif EffectiveState.ERROR in required:
+        elif any(s == EffectiveState.ERROR for _step, s in required):
             rep = EffectiveState.ERROR
         elif done == total:
             rep = EffectiveState.DONE
-        elif EffectiveState.STALE in required:
+        elif any(s == EffectiveState.STALE for _step, s in required):
             rep = EffectiveState.STALE
         else:
             rep = EffectiveState.NOT_STARTED
+        return done, total, rep, current
+
+    def summary(self) -> tuple[int, int, EffectiveState]:
+        """``(done, total, representative_state)`` for the subject-list row (see :meth:`status`)."""
+        done, total, rep, _current = self.status()
         return done, total, rep
 
     # ---- manual per-subject metadata (notes + problem flag) ----

@@ -105,3 +105,16 @@ STEP_SPECS: dict[Step, StepSpec] = {
 }
 
 STEP_ORDER: tuple[Step, ...] = tuple(STEP_SPECS)
+
+# Short labels for the subject list's "current step" column (the per-step titles are too long).
+STEP_SHORT: dict[Step, str] = {
+    _S.CREATE_RESULTS: "Setup",
+    _S.CONCAT_WAVS: "Concat",
+    _S.BUILD_TRIALINFO: "trialInfo",
+    _S.DENOISE: "Denoise",
+    _S.MARK_FIRST_STIMS: "First stim",
+    _S.MAKE_EVENTS: "Events",
+    _S.RUN_MFA: "MFA",
+    _S.RESPONSE_CODING: "Response",
+    _S.WRITE_TRIALS: "Write Trials",
+}

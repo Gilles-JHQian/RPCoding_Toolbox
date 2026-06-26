@@ -34,13 +34,23 @@ class SubjectRow(QWidget):
         self._id.setObjectName("Mono")
         lay.addWidget(self._id)
         lay.addStretch(1)
+        self._step = QLabel("")  # which step the subject is currently at
+        self._step.setObjectName("Secondary")
+        lay.addWidget(self._step)
         self._prog = QLabel("–/–")
         self._prog.setObjectName("Meta")
         lay.addWidget(self._prog)
         self._paint()
 
-    def set_summary(self, done: int | None, total: int | None, state: EffectiveState) -> None:
+    def set_summary(
+        self,
+        done: int | None,
+        total: int | None,
+        state: EffectiveState,
+        step_label: str = "",
+    ) -> None:
         self._done, self._total, self._state = done, total, state
+        self._step.setText(step_label)
         self._paint()
 
     def set_selected(self, selected: bool) -> None:

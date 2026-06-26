@@ -26,7 +26,7 @@ from rpcoding.core import paths
 from rpcoding.core.config import AppConfig
 from rpcoding.core.scanner import scan_subjects
 from rpcoding.core.session import SubjectSession
-from rpcoding.core.steps import STEP_ORDER, EffectiveState, Step, StepKind, StepSpec
+from rpcoding.core.steps import STEP_ORDER, STEP_SHORT, EffectiveState, Step, StepKind, StepSpec
 from rpcoding.core.steps import STEP_SPECS as _SPECS
 from rpcoding.core.tasks import Task
 from rpcoding.gui.config import load_subject_list, save_config, save_subject_list
@@ -399,8 +399,10 @@ class Dashboard(QWidget):
             return
         self._session.set_flagged(checked)
         self._update_flag_button(checked)
-        done, total, state = self._session.summary()
-        self._subjects.set_summary(self._session.subject, done, total, state)
+        done, total, state, current = self._session.status()
+        self._subjects.set_summary(
+            self._session.subject, done, total, state, self._step_label(current)
+        )
         self._refresh_states()
 
     def _update_flag_button(self, flagged: bool) -> None:
@@ -450,13 +452,20 @@ class Dashboard(QWidget):
             self._select_all.setCheckState(Qt.CheckState.PartiallyChecked)
         self._select_all.blockSignals(False)
 
+    @staticmethod
+    def _step_label(current: Step | None) -> str:
+        """Short label of the subject's current step (or a done marker) for the subject list."""
+        return "✓ done" if current is None else STEP_SHORT.get(current, current.value)
+
     def _process_next_summary(self) -> None:
         if not self._summary_queue:
             return
         sid = self._summary_queue.pop(0)
         try:
-            done, total, state = SubjectSession(self._config, self.current_task, sid).summary()
-            self._subjects.set_summary(sid, done, total, state)
+            done, total, state, current = SubjectSession(
+                self._config, self.current_task, sid
+            ).status()
+            self._subjects.set_summary(sid, done, total, state, self._step_label(current))
         except OSError:
             pass  # a cloud-sync placeholder we can't read yet; skip it this pass
         self._summary_done += 1
@@ -557,8 +566,10 @@ class Dashboard(QWidget):
         """Recompute and repaint step states (e.g. after the editor saves an output)."""
         self._refresh_states()
         if self._session is not None:
-            done, total, state = self._session.summary()
-            self._subjects.set_summary(self._session.subject, done, total, state)
+            done, total, state, current = self._session.status()
+            self._subjects.set_summary(
+                self._session.subject, done, total, state, self._step_label(current)
+            )
 
     def _refresh_states(self) -> None:
         if self._session is None:

@@ -116,6 +116,8 @@ def test_dashboard_file_based_progress(qtbot, tmp_path):
     # summaries fill in asynchronously (one per event-loop tick); create-results + concat -> 2/8
     # (8 required steps; the optional Denoise is excluded from the count)
     qtbot.waitUntil(lambda: dash._subjects._rows["D1"]._prog.text() == "2/8", timeout=3000)
+    # …and the row shows the current step it's at (next required step = build trialInfo)
+    assert dash._subjects._rows["D1"]._step.text() == "trialInfo"
 
 
 def test_dashboard_manual_step_opens_editor(qtbot, tmp_path):
