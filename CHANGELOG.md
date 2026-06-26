@@ -278,6 +278,12 @@ UP (downstream `rpcode2trials` / word-lists are still lexical-only and come late
 
 ### Fixed (later)
 
+- **Folders menu froze the UI** (`fix/folders-menu-freeze`): opening the 📂 Folders menu resolved
+  the "Raw audio blocks" dir by walking the subject's Box folder tree (a bounded-depth `iterdir`
+  walk) **on the GUI thread** in `aboutToShow` — slow on cloud storage (stat-ing/hydrating many
+  placeholders), so the app hung. The walk now runs on a worker thread, cached per subject; the menu
+  opens instantly and the blocks entry shows "(finding…)" until it resolves. The other shortcuts
+  (results / D_Data / data root) were already cheap single `is_dir` checks.
 - **MFA "Done" but empty — a swallowed per-patient failure** (`fix/mfa-per-patient-error`): the
   vendored MFA pipeline catches a per-patient error, prints `Errors occurred for the following
   patients`, and still **exits 0**. `_run_mfa` only checked the return code, so a failed subject was

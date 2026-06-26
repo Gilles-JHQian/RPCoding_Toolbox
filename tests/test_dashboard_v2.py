@@ -163,6 +163,27 @@ def test_data_root_dialog_requires_a_choice(qtbot):
     assert not dlg._ok.isEnabled()  # can't proceed until a folder is chosen
 
 
+def test_folder_menu_resolves_blocks_off_thread(qtbot, tmp_path):
+    # Building the menu must not block on the slow Box-tree walk: the raw-blocks entry shows
+    # "(finding…)" and is resolved off the UI thread, then cached.
+    _make_subject_dir(tmp_path, Task.LEXICAL_NODELAY, "D1")
+    dash = Dashboard(AppConfig(droot=tmp_path), DARK_THEME)
+    qtbot.addWidget(dash)
+    dash._scan()
+    dash._on_subject("D1")
+    menu = dash._open_folder_btn.menu()
+
+    dash._populate_folder_menu()  # first open: blocks dir not resolved yet
+    assert any("Raw audio blocks (finding" in a.text() for a in menu.actions())
+
+    key = f"{dash._session.task}/D1"
+    qtbot.waitUntil(lambda: key in dash._blocks_cache, timeout=5000)  # resolved in the background
+
+    dash._populate_folder_menu()  # reopen: now a resolved entry, no "(finding…)"
+    labels = [a.text() for a in menu.actions()]
+    assert "Raw audio blocks" in labels and not any("finding" in t for t in labels)
+
+
 def test_subject_count_format_and_selection(qtbot, tmp_path):
     dash = Dashboard(AppConfig(droot=tmp_path), DARK_THEME)
     qtbot.addWidget(dash)
