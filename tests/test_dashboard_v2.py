@@ -129,6 +129,37 @@ def test_dashboard_manual_step_opens_editor(qtbot, tmp_path):
     assert got == [Step.MARK_FIRST_STIMS]
 
 
+def test_dashboard_notes_and_flag(qtbot, tmp_path):
+    _make_subject_dir(tmp_path, Task.LEXICAL_NODELAY, "D1")
+    dash = Dashboard(AppConfig(droot=tmp_path), DARK_THEME)
+    qtbot.addWidget(dash)
+    dash._scan()
+    dash._on_subject("D1")
+    assert dash._notes.isEnabled() and dash._notes.toPlainText() == ""
+    assert not dash._flag_btn.isChecked()
+
+    dash._notes.setPlainText("noisy block 3")
+    dash._save_notes()  # the debounce timer's slot, called directly
+    assert dash._session.notes == "noisy block 3"
+
+    dash._flag_btn.setChecked(True)  # toggled -> _on_flag_toggled
+    assert dash._session.flagged is True
+    assert dash._session.summary()[2] == EffectiveState.FLAGGED
+
+    dash._on_subject("D1")  # reselect reloads the saved notes + flag
+    assert dash._notes.toPlainText() == "noisy block 3"
+    assert dash._flag_btn.isChecked()
+
+
+def test_data_root_dialog_requires_a_choice(qtbot):
+    from rpcoding.gui.first_run_dialog import DataRootDialog
+
+    dlg = DataRootDialog()
+    qtbot.addWidget(dlg)
+    assert dlg.chosen_path() is None
+    assert not dlg._ok.isEnabled()  # can't proceed until a folder is chosen
+
+
 def test_subject_count_format_and_selection(qtbot, tmp_path):
     dash = Dashboard(AppConfig(droot=tmp_path), DARK_THEME)
     qtbot.addWidget(dash)

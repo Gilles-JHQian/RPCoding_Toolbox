@@ -37,6 +37,8 @@ class Manifest:
     task: str
     subject: str
     steps: dict[str, StepRecord] = field(default_factory=dict)
+    notes: str = ""  # free-text manual notes about this subject
+    flagged: bool = False  # manual "this subject has a problem" mark
 
     def record(self, step: Step) -> StepRecord:
         return self.steps.setdefault(str(step), StepRecord())
@@ -46,11 +48,15 @@ class Manifest:
             "task": self.task,
             "subject": self.subject,
             "steps": {k: asdict(v) for k, v in self.steps.items()},
+            "notes": self.notes,
+            "flagged": self.flagged,
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> Manifest:
         m = cls(task=d["task"], subject=d["subject"])
+        m.notes = d.get("notes", "")
+        m.flagged = bool(d.get("flagged", False))
         for k, v in d.get("steps", {}).items():
             m.steps[k] = StepRecord(**v)
         return m

@@ -33,6 +33,9 @@ class EffectiveState(StrEnum):
     DONE = "done"
     STALE = "stale"  # done, but an upstream output changed since
     ERROR = "error"
+    # Subject-level only (never a per-step state): a manual "this subject has a problem" flag the
+    # user sets; it takes precedence over the computed status in the subject list.
+    FLAGGED = "flagged"
 
 
 @dataclass(frozen=True)

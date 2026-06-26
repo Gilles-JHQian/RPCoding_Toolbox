@@ -82,6 +82,37 @@ def test_manifest_roundtrip(tmp_path):
     assert m2.steps[str(Step.CONCAT_WAVS)].outputs == {"allblocks.wav": "123:456"}
 
 
+def test_manifest_notes_and_flag_roundtrip(tmp_path):
+    m = Manifest("T", "D1")
+    m.notes = "block 3 noisy"
+    m.flagged = True
+    p = tmp_path / "m.json"
+    m.save(p)
+    m2 = Manifest.load(p)
+    assert m2.notes == "block 3 noisy"
+    assert m2.flagged is True
+    # back-compat: a manifest written before these fields existed loads with defaults
+    legacy = Manifest.from_dict({"task": "T", "subject": "D1"})
+    assert legacy.notes == "" and legacy.flagged is False
+
+
+def test_session_notes_and_flag_persist(tmp_path):
+    s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")
+    assert s.notes == "" and s.flagged is False
+    s.set_notes("redo response coding")
+    s.set_flagged(True)
+    s2 = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")  # reloads from the saved manifest
+    assert s2.notes == "redo response coding"
+    assert s2.flagged is True
+
+
+def test_flagged_subject_summary_is_flagged(tmp_path):
+    s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")
+    assert s.summary()[2] == EffectiveState.NOT_STARTED
+    s.set_flagged(True)
+    assert s.summary()[2] == EffectiveState.FLAGGED  # the manual flag wins over computed status
+
+
 # ---- session state ----
 
 
