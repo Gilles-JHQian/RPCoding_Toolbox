@@ -43,6 +43,7 @@ _INITIAL_VIEW_S = 60.0  # open zoomed to this window (fast first render); Fit sh
 
 # Friendly left-column names for the lanes (the internal tier name still drives the trial index).
 _LANE_DISPLAY = {
+    "block_onsets": "block",
     "first_stims": "first stim",
     "condition_events": "condition",
     "cue_events": "cue",

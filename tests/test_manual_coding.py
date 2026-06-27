@@ -35,8 +35,9 @@ def test_config_word_lists_default_none(tmp_path):
     assert AppConfig.from_dict(d).word_list is None
 
 
-# Both manual steps share one unified lane layout (first stim, condition, cue, response).
-_UNIFIED = ["first_stims", "condition_events", "cue_events", "response"]
+# Both manual steps share one unified lane layout: a read-only block-onset nav track on top, then
+# first stim, condition, cue, response.
+_UNIFIED = ["block_onsets", "first_stims", "condition_events", "cue_events", "response"]
 
 
 def test_tiers_for_step_first_stims(tmp_path):
@@ -73,7 +74,12 @@ def test_tiers_for_step_denoise(tmp_path):
     # nothing is editable, and there's no label save target (it completes via the audio write).
     specs, save_path = tiers_for_step(tmp_path, Step.DENOISE)
     assert save_path is None
-    assert [name for name, _t, _e in specs] == ["first_stims", "condition_events", "cue_events"]
+    assert [name for name, _t, _e in specs] == [
+        "block_onsets",
+        "first_stims",
+        "condition_events",
+        "cue_events",
+    ]
     assert [name for name, _t, e in specs if e] == []
 
 

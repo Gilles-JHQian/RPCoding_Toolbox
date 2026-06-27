@@ -15,7 +15,7 @@ from pathlib import Path
 import numpy as np
 
 from rpcoding.core.audio.io import read_wav, write_wav
-from rpcoding.core.matio import save_mat
+from rpcoding.core.matio import load_mat, save_mat
 from rpcoding.core.progress import Reporter, noop, sub
 
 DEFAULT_PAD_SECONDS = 10.0
@@ -109,6 +109,15 @@ def concatenate_blocks(
 def save_block_wav_onsets(path: Path | str, onsets: np.ndarray) -> None:
     """Write ``block_wav_onsets.mat`` (variable ``block_wav_onsets``)."""
     save_mat(path, {"block_wav_onsets": np.asarray(onsets, dtype=np.float64)})
+
+
+def load_block_wav_onsets(path: Path | str) -> np.ndarray:
+    """Read ``block_wav_onsets.mat`` back to the ``(max_block, 2)`` [start sample, fs] array.
+
+    ``np.atleast_2d`` restores the row shape when a single-block file is squeezed to ``(2,)``.
+    """
+    arr = np.asarray(load_mat(path)["block_wav_onsets"], dtype=np.float64)
+    return np.atleast_2d(arr)
 
 
 def combine_wavs(
