@@ -289,6 +289,28 @@ UP (downstream `rpcode2trials` / word-lists are still lexical-only and come late
 
 ### Fixed (later)
 
+- **Errored step could still show "Done"** (`fix/pipeline-status-trials-box-retry`): when a step
+  failed but an output file already existed, the dashboard showed Done because file-presence
+  overrode the recorded error — e.g. re-running *Generate cue + condition events* (step 6), which
+  errors early on the `Trials.mat` lookup while the prior run's `cue_events.txt` lingers, or
+  *Write Trials* (step 9), whose output doubles as its input and so always "exists". A recorded
+  error from the most recent run is now authoritative: the step shows red regardless of leftover
+  artifacts, and a subsequent successful re-run clears it. (Reverses the earlier "disk presence wins
+  over a leftover error record" rule for **our own** runs; legacy subjects with no manifest still go
+  green from file presence.)
+- **Auto-retry transient Box read/write errors** (`fix/pipeline-status-trials-box-retry`): Box
+  intermittently fails a file read mid-sync (WinError 1006 "the volume for a file has been changed",
+  or a brief lock), which surfaced as a spurious step failure — most often on *Generate cue +
+  condition events*. `run_step` now wraps each automated step in `core/retry.py`, which waits ~0.6 s
+  and retries (up to 4×) on a transient `OSError`; a genuinely missing file (`FileNotFoundError`) is
+  never retried. The running step's progress line shows "Cloud storage hiccup; waiting then
+  retrying…".
+- **Duplicate `Trials.mat` no longer hard-errors** (`fix/pipeline-status-trials-box-retry`): some
+  D_Data subjects carry both the canonical `<subject>/<date>/mat/Trials.mat` (where
+  `ecog_preprocessing.m` writes) **and** a stray copy directly under `<subject>/mat/`.
+  `find_trials_mat` raised "Found more than one Trials.mat"; it now prefers the canonical
+  date-folder copy and logs the ignored duplicate, only erroring when the matches are genuinely
+  ambiguous (e.g. two different date folders). (Seen on Uniqueness Point D94.)
 - **Folders menu froze the UI** (`fix/folders-menu-freeze`): opening the 📂 Folders menu resolved
   the "Raw audio blocks" dir by walking the subject's Box folder tree (a bounded-depth `iterdir`
   walk) **on the GUI thread** in `aboutToShow` — slow on cloud storage (stat-ing/hydrating many

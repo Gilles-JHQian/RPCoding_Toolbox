@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from rpcoding.core import paths
 from rpcoding.core.tasks import Task
 
@@ -73,3 +75,50 @@ def test_resolve_blocks_dir_fallback_when_absent(tmp_path):
     assert paths.resolve_blocks_dir(subj, Task.LEXICAL_NODELAY) == (
         subj / "Lexical No Delay" / "All Blocks"
     )
+
+
+# ---- find_trials_mat ----
+
+
+def _make_trials(p: Path) -> Path:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(b"x")
+    return p
+
+
+def test_find_trials_mat_single(tmp_path):
+    subj = tmp_path / "D94"
+    want = _make_trials(subj / "230809" / "mat" / "Trials.mat")
+    assert paths.find_trials_mat(subj) == want
+
+
+def test_find_trials_mat_none_raises(tmp_path):
+    subj = tmp_path / "D94"
+    subj.mkdir()
+    with pytest.raises(FileNotFoundError):
+        paths.find_trials_mat(subj)
+
+
+def test_find_trials_mat_prefers_canonical_date_folder(tmp_path):
+    """D94 has both <date>/mat/Trials.mat (canonical) and a stray <subject>/mat/Trials.mat;
+    prefer the canonical date-folder copy instead of erroring."""
+    subj = tmp_path / "D94"
+    canonical = _make_trials(subj / "230809" / "mat" / "Trials.mat")
+    _make_trials(subj / "mat" / "Trials.mat")  # stray non-canonical duplicate
+    assert paths.find_trials_mat(subj) == canonical
+
+
+def test_find_trials_mat_single_noncanonical_still_resolves(tmp_path):
+    """A lone copy that isn't under a date folder is still usable (no ambiguity)."""
+    subj = tmp_path / "D94"
+    want = _make_trials(subj / "mat" / "Trials.mat")
+    assert paths.find_trials_mat(subj) == want
+
+
+def test_find_trials_mat_two_date_folders_is_ambiguous(tmp_path):
+    """Two canonical copies (two recording dates) are genuinely ambiguous -> raise."""
+    subj = tmp_path / "D94"
+    _make_trials(subj / "230809" / "mat" / "Trials.mat")
+    _make_trials(subj / "230810" / "mat" / "Trials.mat")
+    with pytest.raises(ValueError, match="more than one Trials.mat"):
+        paths.find_trials_mat(subj)

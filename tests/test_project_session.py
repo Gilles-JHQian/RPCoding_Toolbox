@@ -239,12 +239,24 @@ def test_empty_mfa_output_is_not_done(tmp_path):
     assert s.effective_state(Step.RUN_MFA) != EffectiveState.DONE
 
 
-def test_disk_presence_overrides_error_record(tmp_path):
-    """A leftover error record must not hide a step whose output is present (file = done)."""
+def test_error_record_wins_over_present_output(tmp_path):
+    """A recorded error from our last run shows ERROR even if a (stale/pre-existing) output is still
+    on disk — e.g. a step-6 re-run that fails while the prior run's events file lingers, or
+    write-Trials, whose output doubles as its input and therefore always 'exists'."""
     s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")
     s.results_dir.mkdir(parents=True)
     (s.results_dir / paths.ALLBLOCKS_WAV).write_bytes(b"x")
     s.record_error(Step.CONCAT_WAVS, "boom")
+    assert s.effective_state(Step.CONCAT_WAVS) == EffectiveState.ERROR
+
+
+def test_error_cleared_by_subsequent_done(tmp_path):
+    """Re-running the step successfully clears the error (record_done wins)."""
+    s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")
+    s.results_dir.mkdir(parents=True)
+    (s.results_dir / paths.ALLBLOCKS_WAV).write_bytes(b"x")
+    s.record_error(Step.CONCAT_WAVS, "boom")
+    s.record_done(Step.CONCAT_WAVS)
     assert s.effective_state(Step.CONCAT_WAVS) == EffectiveState.DONE
 
 
