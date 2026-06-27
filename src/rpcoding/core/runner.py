@@ -18,6 +18,7 @@ from rpcoding.core.matio import load_trialinfo
 from rpcoding.core.mfa.runner import resolve_stim_dir, run_mfa
 from rpcoding.core.paths import find_trials_mat
 from rpcoding.core.progress import Reporter, StepProgress, noop
+from rpcoding.core.retry import retry_transient_io
 from rpcoding.core.rpcode.rpcode2trials import generate_trials
 from rpcoding.core.session import SubjectSession
 from rpcoding.core.steps import STEP_SPECS, EffectiveState, Step, StepKind
@@ -228,8 +229,15 @@ def run_step(
     action = actions.get(step)
     if action is None:
         raise NotImplementedError(f"No action registered for {step}")
+
+    def _on_retry(attempt: int, exc: OSError) -> None:
+        if report is not None:
+            report(None, f"Cloud storage hiccup ({type(exc).__name__}); waiting then retrying…")
+
     try:
-        action(session, report)
+        # Box/OneDrive can fail a read mid-sync ("volume changed"); the action only reads/overwrites
+        # (idempotent), so a brief wait + retry recovers without surfacing a spurious error.
+        retry_transient_io(lambda: action(session, report), on_retry=_on_retry)
     except Exception as exc:  # noqa: BLE001 - recorded then re-raised
         session.record_error(step, f"{type(exc).__name__}: {exc}")
         raise

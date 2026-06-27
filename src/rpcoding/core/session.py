@@ -157,30 +157,36 @@ class SubjectSession:
         any_dep_stale = any(s == EffectiveState.STALE for s in dep_states)
 
         present = self._completed_on_disk(step)
-        done = (rec.state == "done") if present is None else present
 
-        # The output existing on disk wins over a leftover error record (file-existence = done),
-        # so a step is never shown as Error once its artifact is present.
-        if done:
-            if rec.state == "done":
-                # provenance available: a content-edit upstream marks this stale. Drop allblocks.wav
-                # from the recorded side too, so pre-exclusion manifests still match.
-                recorded = {k: v for k, v in rec.dep_inputs.items() if k != paths.ALLBLOCKS_WAV}
-                stale = self._dep_fingerprints(step) != recorded or not deps_done or any_dep_stale
-            else:
-                # outputs exist but we never ran it (pre-existing): only structural staleness
-                stale = not deps_done or any_dep_stale
-            st = EffectiveState.STALE if stale else EffectiveState.DONE
-        elif rec.state == "error":
+        # A recorded error from our most recent run is authoritative: show ERROR even if a
+        # pre-existing or stale output artifact is still on disk (e.g. step 6 re-run that fails on
+        # Trials.mat lookup while last run's cue_events.txt lingers; or write-Trials, whose output
+        # doubles as its input and so always "exists"). Legacy subjects processed outside the app
+        # have no manifest record, so the file-existence heuristic below still marks them done.
+        if rec.state == "error":
             st = EffectiveState.ERROR
-        elif present is not None and rec.state == "done":
-            st = EffectiveState.STALE  # recorded done but the output is now gone
-        elif not deps_done:
-            st = EffectiveState.BLOCKED
-        elif spec.kind == StepKind.MANUAL:
-            st = EffectiveState.NEEDS_MANUAL
         else:
-            st = EffectiveState.NOT_STARTED
+            done = (rec.state == "done") if present is None else present
+            if done:
+                if rec.state == "done":
+                    # provenance available: an upstream content-edit marks this stale. Drop
+                    # allblocks.wav from the recorded side too, so pre-exclusion manifests match.
+                    recorded = {k: v for k, v in rec.dep_inputs.items() if k != paths.ALLBLOCKS_WAV}
+                    stale = (
+                        self._dep_fingerprints(step) != recorded or not deps_done or any_dep_stale
+                    )
+                else:
+                    # outputs exist but we never ran it (pre-existing): only structural staleness
+                    stale = not deps_done or any_dep_stale
+                st = EffectiveState.STALE if stale else EffectiveState.DONE
+            elif present is not None and rec.state == "done":
+                st = EffectiveState.STALE  # recorded done but the output is now gone
+            elif not deps_done:
+                st = EffectiveState.BLOCKED
+            elif spec.kind == StepKind.MANUAL:
+                st = EffectiveState.NEEDS_MANUAL
+            else:
+                st = EffectiveState.NOT_STARTED
         _memo[step] = st
         return st
 

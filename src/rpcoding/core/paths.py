@@ -6,10 +6,13 @@ CoganLab data root (``$BOX/CoganLab``).
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 
 from rpcoding.core.tasks import COGAN_TASK_FOLDER, Task
+
+_log = logging.getLogger(__name__)
 
 _BLOCK_TRIALDATA_RE = re.compile(r"_Block_(\d+)_TrialData\.mat$", re.IGNORECASE)
 
@@ -159,15 +162,45 @@ def results_dir(droot: Path | str, task: Task | str, subject: str) -> Path:
     return results_root(droot, task) / subject
 
 
+def _is_canonical_trials(match: Path, base: Path) -> bool:
+    """Whether ``match`` sits at the canonical ``<subject>/<date>/mat/Trials.mat`` location.
+
+    ``ecog_preprocessing.m`` always writes Trials.mat under a numeric recording-date folder
+    (e.g. ``D94/230809/mat/Trials.mat``). A stray copy directly under ``<subject>/mat/`` (no date
+    folder) or nested elsewhere is *not* canonical.
+    """
+    try:
+        parts = match.relative_to(base).parts  # e.g. ('230809', 'mat', 'Trials.mat')
+    except ValueError:
+        return False
+    return len(parts) == 3 and parts[1] == "mat" and parts[0].isdigit()
+
+
 def find_trials_mat(d_data_subject_dir: Path | str) -> Path:
     """Locate the upstream ``**/mat/Trials.mat`` under a D_Data subject dir.
 
-    Mirrors the MATLAB ``dir(.../**/mat/Trials.mat)`` lookup: raises if zero or more than one
-    match (the pipeline requires exactly one).
+    Mirrors the MATLAB ``dir(.../**/mat/Trials.mat)`` lookup, which requires exactly one match.
+    When several match, prefer the canonical ``<date>/mat/Trials.mat`` (the ``ecog_preprocessing.m``
+    output location) and ignore a stray duplicate elsewhere — logging what was skipped so the extra
+    file is not hidden. Only raises when zero match, or the duplicates are genuinely ambiguous.
     """
-    matches = sorted(Path(d_data_subject_dir).glob("**/mat/Trials.mat"))
+    base = Path(d_data_subject_dir)
+    matches = sorted(base.glob("**/mat/Trials.mat"))
     if not matches:
         raise FileNotFoundError(f"No Trials.mat under {d_data_subject_dir} (**/mat/Trials.mat)")
-    if len(matches) > 1:
-        raise ValueError(f"Found more than one Trials.mat under {d_data_subject_dir}: {matches}")
-    return matches[0]
+    if len(matches) == 1:
+        return matches[0]
+    canonical = [m for m in matches if _is_canonical_trials(m, base)]
+    if len(canonical) == 1:
+        ignored = [str(m) for m in matches if m != canonical[0]]
+        _log.warning(
+            "Multiple Trials.mat under %s; using canonical %s, ignoring %s",
+            d_data_subject_dir,
+            canonical[0],
+            ignored,
+        )
+        return canonical[0]
+    raise ValueError(
+        f"Found more than one Trials.mat under {d_data_subject_dir}: {matches}. "
+        "Expected exactly one canonical <date>/mat/Trials.mat — resolve the duplicates."
+    )
