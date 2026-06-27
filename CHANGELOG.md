@@ -287,6 +287,16 @@ UP (downstream `rpcode2trials` / word-lists are still lexical-only and come late
   our `.mat` files ~20-40× larger than the MATLAB pipeline's (e.g. a 504-trial `Trials_org` was 359 KB
   vs MATLAB's ~18 KB; now ~10 KB). Lossless — `loadmat` decompresses transparently.
 
+### Editor — block-onset navigation track (`feat/block-onset-track`)
+
+- **A read-only "block" lane** at the top of the annotation editor marks where each block begins in
+  the concatenated `allblocks.wav` (labels `block 1`…`block N`). When marking each block's first
+  stimulus you can jump straight to a block's start (click the marker, or focus the lane and Tab
+  between blocks) instead of hunting through ~27 min of audio. Derived on the fly from
+  `block_wav_onsets.mat` — no extra artifact, works for any already-concatenated subject — via
+  `core/events/block_onsets.py` (onset = `(start_sample - 1) / fs`; missing block rows skipped).
+  Shown on the mark-first-stims, response-coding, and denoise editors.
+
 ### Fixed (later)
 
 - **Errored step could still show "Done"** (`fix/pipeline-status-trials-box-retry`): when a step

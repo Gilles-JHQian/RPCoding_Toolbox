@@ -11,6 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from rpcoding.core import paths
+from rpcoding.core.events.block_onsets import load_block_onsets_tier
 from rpcoding.core.labels import Tier, read_tier
 from rpcoding.core.mfa.ingest import ingest_mfa_tiers
 from rpcoding.core.steps import Step
@@ -45,6 +46,9 @@ def tiers_for_step(results_dir: Path | str, step: Step) -> tuple[list[TierSpec],
     if not (is_first or is_resp or is_denoise):
         raise ValueError(f"{step} is not an editor-backed step")
 
+    # Top, read-only: a marker per block onset in allblocks.wav, so you can jump to a block before
+    # marking its first stimulus (derived from block_wav_onsets.mat; empty if not concatenated yet).
+    blocks = load_block_onsets_tier(results_dir)
     first = _load_or_empty(results_dir / paths.FIRST_STIMS_TXT, "first_stims")
     cond = _load_or_empty(results_dir / paths.CONDITION_EVENTS_TXT, "condition_events")
     cue = _load_or_empty(results_dir / paths.CUE_EVENTS_TXT, "cue_events")
@@ -52,12 +56,14 @@ def tiers_for_step(results_dir: Path | str, step: Step) -> tuple[list[TierSpec],
         # Denoise edits the audio, not labels: show the reference tiers read-only, nothing editable
         # and no label save target (it completes via the audio write, not a tier save).
         denoise_specs: list[TierSpec] = [
+            ("block_onsets", blocks, False),
             ("first_stims", first, False),
             ("condition_events", cond, False),
             ("cue_events", cue, False),
         ]
         return denoise_specs, None
     specs: list[TierSpec] = [
+        ("block_onsets", blocks, False),
         ("first_stims", first, is_first),
         ("condition_events", cond, False),
         ("cue_events", cue, False),
