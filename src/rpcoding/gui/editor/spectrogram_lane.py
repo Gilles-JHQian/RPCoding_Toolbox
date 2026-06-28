@@ -9,7 +9,7 @@ import pyqtgraph as pg
 from PySide6.QtCore import QObject, QRectF
 
 from rpcoding.core.audio.render.colormap import MAGMA_LUT
-from rpcoding.core.audio.render.spectro import slice_spectro
+from rpcoding.core.audio.render.spectro import StftParams, frame_time_offset, slice_spectro
 from rpcoding.gui.theme import Theme
 
 
@@ -30,6 +30,7 @@ class SpectrogramLane(QObject):
 
         self._mmap = None
         self._meta: dict | None = None
+        self._t_off = 0.0  # seconds: STFT frame-centre alignment vs the waveform
         vb = plot.getViewBox()
         vb.setMenuEnabled(False)
         vb.enableAutoRange(x=False, y=False)
@@ -39,6 +40,10 @@ class SpectrogramLane(QObject):
         self.close_source()
         self._mmap = np.load(str(spec_path), mmap_mode="r")
         self._meta = meta
+        # Align frames to the waveform. Prefer the stored offset; older caches (no t_offset/n_fft)
+        # fall back to computing it from the default n_fft, since hop/fs are always present.
+        n_fft = meta.get("n_fft", StftParams().n_fft)
+        self._t_off = meta.get("t_offset", frame_time_offset(n_fft, meta["hop"], meta["fs"]))
         self.plot.setYRange(0, meta["n_rows"], padding=0)
         # Auto-scaled from the data percentiles, but with both bounds raised: the lower bound clips
         # more of the noise floor to black, the upper makes the loud parts less saturated overall.
@@ -49,7 +54,7 @@ class SpectrogramLane(QObject):
     def set_view(self, t0: float, t1: float, px: int) -> None:
         if self._mmap is None or self._meta is None:
             return
-        img, x0, x1, nrows = slice_spectro(self._mmap, t0, t1, self._meta["dt"], px)
+        img, x0, x1, nrows = slice_spectro(self._mmap, t0, t1, self._meta["dt"], px, self._t_off)
         self._img.setImage(img, autoLevels=False)
         self._img.setRect(QRectF(float(x0), 0.0, float(max(x1 - x0, 1e-9)), float(nrows)))
 

@@ -11,6 +11,7 @@ from rpcoding.core.audio.render.spectro import (
     _interp_to_log,
     _log_interp_weights,
     db_magnitude,
+    frame_time_offset,
     n_frames,
     pool_columns_max,
     slice_spectro,
@@ -70,6 +71,24 @@ def test_slice_spectro_window_and_rows():
     assert x0 <= 0.0 and x1 >= 1.0
 
 
+def test_frame_time_offset_formula():
+    # frame c is centred on sample c*hop + n_fft/2 -> shift = (n_fft - hop) / (2*fs)
+    assert frame_time_offset(2048, 512, 48000) == pytest.approx((2048 - 512) / (2 * 48000))
+    assert frame_time_offset(1024, 256, 16000) == pytest.approx(0.024)  # 768 / 32000
+
+
+def test_slice_spectro_offset_aligns_frames_to_waveform():
+    mm = np.zeros((4, 100), dtype=np.float32)
+    mm[0] = np.arange(100)  # encode each column's index in row 0
+    dt = 0.01
+    img0, x0a, _x1a, _ = slice_spectro(mm, 0.30, 0.40, dt, 1000)  # no offset (default)
+    img1, x0b, _x1b, _ = slice_spectro(mm, 0.30, 0.40, dt, 1000, t_offset=0.05)
+    # Same screen window, but the offset pulls in 5 earlier frames (0.05 s / 0.01 dt) -> the whole
+    # spectrogram shifts right so a frame lands under the matching waveform sample.
+    assert x0a == pytest.approx(0.30) and x0b == pytest.approx(0.30)
+    assert img0[0, 0] == 30 and img1[0, 0] == 25
+
+
 def test_build_log_spectrogram_roundtrip(tmp_path):
     pytest.importorskip("scipy")
     sf = pytest.importorskip("soundfile")  # noqa: F841 - ensures libsndfile is available
@@ -87,6 +106,8 @@ def test_build_log_spectrogram_roundtrip(tmp_path):
     meta = build_log_spectrogram(wav, out, StftParams(n_fft=1024, hop=256))
     arr = np.load(out, mmap_mode="r")
     assert arr.shape == (256, meta["shape"][1]) and arr.dtype == np.float32
+    assert meta["n_fft"] == 1024
+    assert meta["t_offset"] == pytest.approx((1024 - 256) / (2 * fs))  # frame-centre alignment
 
     log_f = np.geomspace(80, 8000, 256)
     peak_row = int(np.argmax(np.asarray(arr).mean(axis=1)))
