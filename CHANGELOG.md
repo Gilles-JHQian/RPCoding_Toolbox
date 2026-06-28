@@ -314,6 +314,14 @@ UP (downstream `rpcode2trials` / word-lists are still lexical-only and come late
 
 ### Fixed (later)
 
+- **Spectrogram was drawn ~17 ms too early** (`fix/spectrogram-time-alignment`): the spectrogram
+  sat slightly left of the waveform, so a stop burst / high-energy peak appeared *before* the
+  envelope showed it. `scipy.signal.stft(boundary=None)` centres frame `c` on sample
+  `c*hop + n_fft/2`, but each column was placed at `c*dt` (its window's *start*), shifting the whole
+  image earlier by `(n_fft - hop) / (2*fs)` — 17.4 ms at the recordings' 44.1 kHz. `slice_spectro`
+  now applies that `frame_time_offset` so columns land under the matching waveform sample; the
+  offset is stored in the cache meta (older caches recompute it — no rebuild needed). The waveform
+  was already sample-accurate.
 - **Errored step could still show "Done"** (`fix/pipeline-status-trials-box-retry`): when a step
   failed but an output file already existed, the dashboard showed Done because file-presence
   overrode the recorded error — e.g. re-running *Generate cue + condition events* (step 6), which

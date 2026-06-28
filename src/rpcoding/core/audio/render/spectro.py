@@ -39,6 +39,16 @@ def n_frames(n_samples: int, n_fft: int, hop: int) -> int:
     return 0 if n_samples < n_fft else 1 + (n_samples - n_fft) // hop
 
 
+def frame_time_offset(n_fft: int, hop: int, fs: float) -> float:
+    """Seconds to shift the spectrogram so each column's cell is centred on its window centre.
+
+    ``scipy.signal.stft(boundary=None)`` centres frame ``c`` on sample ``c*hop + n_fft/2``, so a
+    column drawn naively at ``c*dt`` (its window's *start*) lands ``(n_fft - hop) / (2*fs)`` s too
+    early against the sample-accurate waveform. Adding this offset aligns the two.
+    """
+    return (n_fft - hop) / (2.0 * fs)
+
+
 def db_magnitude(mag: np.ndarray, floor: float = 1e-10) -> np.ndarray:
     """20*log10(|mag| + floor) as float32 (|mag|=1 -> 0 dB, |mag|=0 -> ~-200 dB, finite)."""
     return (20.0 * np.log10(np.abs(mag) + floor)).astype(np.float32)
@@ -65,18 +75,20 @@ def pool_columns_max(block: np.ndarray, w_px: int) -> np.ndarray:
     return np.maximum.reduceat(block, starts, axis=1).astype(block.dtype)
 
 
-def slice_spectro(mmap, t0: float, t1: float, dt: float, w_px: int):
+def slice_spectro(mmap, t0: float, t1: float, dt: float, w_px: int, t_offset: float = 0.0):
     """Slice the memmap to the visible time window and max-pool to viewport width.
 
-    Returns ``(image, x0_seconds, x1_seconds, n_rows)``.
+    ``t_offset`` (see :func:`frame_time_offset`) shifts column time so frames sit under the matching
+    waveform; columns are chosen for ``[t0, t1]`` in shifted time and the returned x bounds carry
+    the same shift. Returns ``(image, x0_seconds, x1_seconds, n_rows)``.
     """
     nf = mmap.shape[1]
-    c0 = max(int(np.floor(t0 / dt)), 0)
-    c1 = min(int(np.ceil(t1 / dt)) + 1, nf)
+    c0 = max(int(np.floor((t0 - t_offset) / dt)), 0)
+    c1 = min(int(np.ceil((t1 - t_offset) / dt)) + 1, nf)
     if c1 <= c0:
         c1 = min(c0 + 1, nf)
     block = np.ascontiguousarray(mmap[:, c0:c1])
-    return pool_columns_max(block, w_px), c0 * dt, c1 * dt, mmap.shape[0]
+    return pool_columns_max(block, w_px), c0 * dt + t_offset, c1 * dt + t_offset, mmap.shape[0]
 
 
 def build_log_spectrogram(
@@ -131,8 +143,10 @@ def build_log_spectrogram(
         "shape": [params.n_rows, nf],
         "dtype": "float32",
         "fs": int(fs),
+        "n_fft": params.n_fft,
         "hop": params.hop,
         "dt": params.hop / fs,
+        "t_offset": frame_time_offset(params.n_fft, params.hop, fs),
         "f_lo": params.f_lo,
         "f_hi": params.f_hi,
         "n_rows": params.n_rows,
