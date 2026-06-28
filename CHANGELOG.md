@@ -287,6 +287,17 @@ UP (downstream `rpcode2trials` / word-lists are still lexical-only and come late
   our `.mat` files ~20-40× larger than the MATLAB pipeline's (e.g. a 504-trial `Trials_org` was 359 KB
   vs MATLAB's ~18 KB; now ~10 KB). Lossless — `loadmat` decompresses transparently.
 
+### Word/Nonword lists — Uniqueness Point integration (`feat/wordlists-uniqueness-point`)
+
+- **The default Word/Nonword lists now cover Uniqueness Point, not just Lexical.** `rpcode2trials`
+  tags each trial Word/Nonword by matching its stimulus filename against these lists; UP stimuli
+  (`altitude.wav` / `ahlawjahns.wav` …) matched neither, so UP write-Trials would mis-tag every
+  trial. The bundled `word_lst.mat` / `nonword_lst.mat` are now the **union** of the lab's Lexical
+  lists (84 + 84) and the UP set (40 words + 40 nonwords) — 124 + 124 entries, the two being
+  disjoint. The UP stimulus metadata is vendored
+  (`core/rpcode/wordlists/uniqueness_point_stimuli.csv`) and the lists are rebuilt by the idempotent
+  `scripts/build_wordlists.py`. Verified: every trial of D90/D147/D86 now classifies.
+
 ### Batch run — stop at manual gates + a Stop button (`feat/batch-stop-and-manual-gate`)
 
 - **Batch stops at the manual gate instead of running past it.** `run_pipeline` now steps *past* a
