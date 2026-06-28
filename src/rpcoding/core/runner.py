@@ -259,7 +259,11 @@ def _runnable_steps(
     planned: list[Step] = []
     done = {s for s in STEP_SPECS if session.effective_state(s) == EffectiveState.DONE}
     for step, spec in STEP_SPECS.items():
-        if spec.kind == StepKind.MANUAL or step not in actions:
+        if spec.kind == StepKind.MANUAL:
+            if step in done:
+                continue  # a satisfied manual gate; later steps may still run
+            break  # a manual step still needs the human -> the real loop stops here too
+        if step not in actions:
             continue
         if spec.kind == StepKind.OPTIONAL and skip_optional:
             continue
@@ -278,22 +282,31 @@ def run_pipeline(
     force: bool = False,
     skip_optional: bool = True,
     on_step: Callable[[StepProgress], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> list[Step]:
-    """Run runnable automated steps in order; stop when a manual/blocked step is reached.
+    """Run runnable automated steps in order; stop at a manual/blocked step (or on cancel).
 
-    ``on_step`` receives a :class:`~rpcoding.core.progress.StepProgress` for every within-step tick,
-    so a batch UI can show which step is running and how far it has got.
+    A manual step that is already done is stepped past (its downstream automated steps may still
+    run); a manual step that still needs the human **stops the pass** — so e.g. a batch never runs
+    write-Trials before response coding is actually done. ``on_step`` receives a
+    :class:`~rpcoding.core.progress.StepProgress` for every within-step tick; ``should_cancel``, if
+    given, is polled before each step so a UI can stop the run between steps.
     """
     total = len(_runnable_steps(session, actions, force=force, skip_optional=skip_optional))
     ran: list[Step] = []
     index = 0
     for step, spec in STEP_SPECS.items():
+        if should_cancel is not None and should_cancel():
+            break
         if spec.kind == StepKind.MANUAL:
-            continue
+            # Proceed past a satisfied manual gate; stop the pass at one that still needs the human.
+            if session.effective_state(step) == EffectiveState.DONE:
+                continue
+            break
         if spec.kind == StepKind.OPTIONAL and skip_optional:
             continue
         if step not in actions:
-            continue  # not wired yet (e.g. MFA, write-Trials)
+            continue  # not wired / excluded for this run (e.g. write-Trials in batch)
         state = session.effective_state(step)
         if state == EffectiveState.BLOCKED:
             break  # waiting on a manual/upstream step
@@ -313,27 +326,43 @@ def run_pipeline(
     return ran
 
 
+# The terminal write-back enriches D_Data/**/Trials.mat in the shared Box dataset — a deliberate,
+# per-subject action, never an unattended batch side-effect. Batch runs the prep up to the manual
+# response-coding gate and stops; the user writes Trials back from the dashboard when ready.
+BATCH_ACTIONS: dict[Step, StepAction] = {
+    s: a for s, a in DEFAULT_ACTIONS.items() if s != Step.WRITE_TRIALS
+}
+
+
 def run_batch(
     config: AppConfig,
     task: Task,
     subjects: Iterable[str],
-    actions: dict[Step, StepAction] = DEFAULT_ACTIONS,
+    actions: dict[Step, StepAction] = BATCH_ACTIONS,
     *,
     force: bool = False,
     on_progress: Callable[[str, tuple], None] | None = None,
     on_step: Callable[[str, StepProgress], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> dict[str, tuple]:
     """Run the automated pipeline for each subject; failures are collected, not fatal.
 
+    Defaults to :data:`BATCH_ACTIONS` (no write-Trials) and stops each subject at its manual gate.
     ``on_progress(subject, result)`` fires when a subject finishes; ``on_step(subject, progress)``
-    streams per-step progress while it runs.
+    streams per-step progress; ``should_cancel`` is polled before each subject (and passed down so
+    the pass also stops between steps) to support a Stop button.
     """
     results: dict[str, tuple] = {}
     for subj in subjects:
+        if should_cancel is not None and should_cancel():
+            break
         session = SubjectSession(config, task, subj)
         sub_on_step = (lambda sp, _s=subj: on_step(_s, sp)) if on_step is not None else None
         try:
-            results[subj] = ("ok", run_pipeline(session, actions, force=force, on_step=sub_on_step))
+            ran = run_pipeline(
+                session, actions, force=force, on_step=sub_on_step, should_cancel=should_cancel
+            )
+            results[subj] = ("ok", ran)
         except Exception as exc:  # noqa: BLE001 - batch keeps going
             results[subj] = ("error", f"{type(exc).__name__}: {exc}")
         if on_progress is not None:

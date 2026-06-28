@@ -287,6 +287,21 @@ UP (downstream `rpcode2trials` / word-lists are still lexical-only and come late
   our `.mat` files ~20-40× larger than the MATLAB pipeline's (e.g. a 504-trial `Trials_org` was 359 KB
   vs MATLAB's ~18 KB; now ~10 KB). Lossless — `loadmat` decompresses transparently.
 
+### Batch run — stop at manual gates + a Stop button (`feat/batch-stop-and-manual-gate`)
+
+- **Batch stops at the manual gate instead of running past it.** `run_pipeline` now steps *past* a
+  manual step only when it's already done, and otherwise **stops the pass** there — so a batch runs
+  the prep up to response coding and halts, instead of skipping the manual step and writing Trials.
+- **Batch never auto-writes Trials.mat.** The terminal write-back enriches `D_Data/**/Trials.mat` in
+  the shared Box dataset — a deliberate, per-subject action. `run_batch` now excludes
+  `WRITE_TRIALS` (new `BATCH_ACTIONS`); previously, when response coding merely *looked* done (its
+  output file present) batch would re-write Trials to Box on every run, because `WRITE_TRIALS` has no
+  results-dir output to mark it done. Write Trials per subject from the dashboard when ready.
+- **Stop button.** The batch dialog gained a **Stop** that cooperatively cancels: `run_batch` /
+  `run_pipeline` poll a `should_cancel` callback before each subject and before each step, so the run
+  winds down cleanly (the in-flight step — e.g. an MFA alignment — finishes first). Closing the
+  dialog mid-run also cancels; remaining subjects are marked "— stopped".
+
 ### Editor — block-onset navigation track (`feat/block-onset-track`)
 
 - **A read-only "block" lane** at the top of the annotation editor marks where each block begins in

@@ -7,6 +7,7 @@ Each subject row shows the current step and a per-step bar; the footer bar shows
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Sequence
 
 from PySide6.QtCore import QObject, Signal
@@ -90,6 +91,10 @@ class BatchDialog(QDialog):
         self._run.setObjectName("Primary")
         self._run.clicked.connect(self._start)
         row.addWidget(self._run)
+        self._stop = QPushButton("Stop")
+        self._stop.setEnabled(False)
+        self._stop.clicked.connect(self._request_stop)
+        row.addWidget(self._stop)
         self._close = QPushButton("Close")
         self._close.clicked.connect(self.reject)
         row.addWidget(self._close)
@@ -99,11 +104,17 @@ class BatchDialog(QDialog):
         self._relay.subject_done.connect(self._on_subject_done)
         self._relay.step_tick.connect(self._on_step_tick)
         self._completed = 0
+        # Set from the UI thread, polled from the worker thread (threading.Event is thread-safe).
+        self._cancel = threading.Event()
+        self._running = False
 
     def _start(self) -> None:
-        if not self._subjects:
+        if not self._subjects or self._running:
             return
+        self._running = True
+        self._cancel.clear()
         self._run.setEnabled(False)
+        self._stop.setEnabled(True)
         self._completed = 0
         self._bar.setValue(0)
         self._overall_label.setText(f"Running 0 / {len(self._subjects)} subjects…")
@@ -123,8 +134,17 @@ class BatchDialog(QDialog):
             self._subjects,
             on_progress=on_progress,
             on_step=on_step,
+            should_cancel=self._cancel.is_set,
             on_finished=self._on_finished,
         )
+
+    def _request_stop(self) -> None:
+        """Ask the batch to stop after the in-flight step finishes (cooperative cancel)."""
+        if not self._running:
+            return
+        self._cancel.set()
+        self._stop.setEnabled(False)
+        self._overall_label.setText("Stopping after the current step…")
 
     def _on_step_tick(
         self, subject: str, title: str, fraction: float | None, message: str, overall: float
@@ -159,6 +179,20 @@ class BatchDialog(QDialog):
         self._overall_label.setText(f"Running {self._completed} / {n} subjects…")
 
     def _on_finished(self) -> None:
+        self._running = False
         self._run.setEnabled(True)
-        self._bar.setValue(_OVERALL_SCALE)
-        self._overall_label.setText(f"Done · {self._completed} / {len(self._subjects)} subjects")
+        self._stop.setEnabled(False)
+        n = len(self._subjects)
+        if self._cancel.is_set():
+            for row in self._rows.values():
+                if self._table.item(row, 1) and self._table.item(row, 1).text() == "Queued":
+                    self._table.setItem(row, 1, QTableWidgetItem("— stopped"))
+            self._overall_label.setText(f"Stopped · {self._completed} / {n} subjects ran")
+        else:
+            self._bar.setValue(_OVERALL_SCALE)
+            self._overall_label.setText(f"Done · {self._completed} / {n} subjects")
+
+    def reject(self) -> None:  # noqa: D102 - Qt override: closing a running batch cancels it
+        if self._running:
+            self._cancel.set()
+        super().reject()

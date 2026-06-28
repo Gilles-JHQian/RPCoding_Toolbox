@@ -91,3 +91,27 @@ def test_batch_dialog_step_progress(qtbot, tmp_path):
     # Indeterminate tick -> the per-row bar goes busy.
     dlg._on_step_tick("D100", "MFA forced alignment", None, "Running forced alignment…", 0.6)
     assert dlg._bars["D100"].maximum() == 0
+
+
+def test_batch_dialog_stop_button(qtbot, tmp_path):
+    dlg = BatchDialog(AppConfig(droot=tmp_path), Task.LEXICAL_NODELAY, ["D100", "D101"])
+    qtbot.addWidget(dlg)
+    assert dlg._run.isEnabled() and not dlg._stop.isEnabled()  # idle: Run on, Stop off
+    dlg._running = True  # pretend a run is in flight (without launching a thread)
+    dlg._stop.setEnabled(True)
+    dlg._request_stop()
+    assert dlg._cancel.is_set()  # the worker's should_cancel will now return True
+    assert not dlg._stop.isEnabled()
+    assert "Stopping" in dlg._overall_label.text()
+
+
+def test_batch_dialog_finish_after_stop_marks_remaining(qtbot, tmp_path):
+    dlg = BatchDialog(AppConfig(droot=tmp_path), Task.LEXICAL_NODELAY, ["D100", "D101"])
+    qtbot.addWidget(dlg)
+    dlg._running = True
+    dlg._cancel.set()
+    dlg._on_subject_done("D100", "ok", "[]")  # first subject ran before the stop took effect
+    dlg._on_finished()
+    assert dlg._table.item(1, 1).text() == "— stopped"  # D101 never started
+    assert "Stopped" in dlg._overall_label.text()
+    assert dlg._run.isEnabled() and not dlg._stop.isEnabled()
