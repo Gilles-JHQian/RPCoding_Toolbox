@@ -322,6 +322,16 @@ UP (downstream `rpcode2trials` / word-lists are still lexical-only and come late
   now applies that `frame_time_offset` so columns land under the matching waveform sample; the
   offset is stored in the cache meta (older caches recompute it — no rebuild needed). The waveform
   was already sample-accurate.
+- **Corrected first_stims marked against the early spectrogram** (`fix/first-stims-offset`): onsets
+  placed by eye against the (then ~17 ms-early) spectrogram inherited that offset, so they sat
+  early. `core/first_stims_offset.py` shifts a subject's `first_stims.txt` onsets *later* by
+  `frame_time_offset(fs)`, keeping a backup (`first_stims.before_offset_fix.txt`) and an idempotency
+  marker (`.rpcoding/first_stims_offset.json`); `restore_first_stims` undoes it. `scripts/
+  fix_first_stims_offset.py` applied it to the 27 subjects marked with the app this session — the
+  offset computed **per subject from its own `allblocks.wav` fs**: +17.41 ms at 44.1 kHz, and
+  **+38.40 ms for the four 20 kHz recordings (D28/D29/D42/D54)** (a flat 17.4 ms would have
+  under-corrected those). Downstream cue/condition events inherit the shift — regenerate events to
+  propagate it.
 - **Errored step could still show "Done"** (`fix/pipeline-status-trials-box-retry`): when a step
   failed but an output file already existed, the dashboard showed Done because file-presence
   overrode the recorded error — e.g. re-running *Generate cue + condition events* (step 6), which
