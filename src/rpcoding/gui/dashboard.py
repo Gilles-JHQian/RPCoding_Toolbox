@@ -286,8 +286,23 @@ class Dashboard(QWidget):
         lay.addWidget(self._open_folder_btn)
         return bar
 
-    def _set_status(self, text: str) -> None:
+    def _set_status(self, text: str, tooltip: str | None = None) -> None:
         self._status_btn.setText(text)
+        self._status_btn.setToolTip(tooltip or "Click to view the last run log")
+
+    def _subject_warning(self) -> str | None:
+        """The multi-session auto-combine advisory for the current subject, if any."""
+        if self._session is None:
+            return None
+        return self._session.warnings.get("multi_session")
+
+    def _status_with_warning(self, default: str) -> None:
+        """Show ``default`` in the status bar, or the multi-session advisory (⚠) if one is set."""
+        warning = self._subject_warning()
+        if warning:
+            self._set_status(f"⚠ {warning}", tooltip=warning)
+        else:
+            self._set_status(default)
 
     def _current_log_path(self) -> Path | None:
         """The log to show when the status bar is clicked: the last one we ran, else this subject's
@@ -326,11 +341,17 @@ class Dashboard(QWidget):
                 parent=self,
             ).exec()
             return
-        # No log file on disk — fall back to any recorded step errors for this subject.
+        # No log file on disk — fall back to any multi-session advisory + recorded step errors.
+        parts = []
+        warning = self._subject_warning()
+        if warning:
+            parts.append(f"--- multi-session advisory ---\n⚠ {warning}")
         errors = self._recorded_errors_text()
         if errors:
+            parts.append(errors)
+        if parts:
             folder = self._session.results_dir if self._session is not None else None
-            LogDialog("Last run — recorded errors", errors, folder=folder, parent=self).exec()
+            LogDialog("Last run", "\n\n".join(parts), folder=folder, parent=self).exec()
             return
         QMessageBox.information(
             self,
@@ -532,7 +553,7 @@ class Dashboard(QWidget):
         self._flag_btn.blockSignals(False)
         self._flag_btn.setEnabled(True)
         self._update_flag_button(self._session.flagged)
-        self._set_status(f"{subject} selected")
+        self._status_with_warning(f"{subject} selected")
         self._refresh_states()
 
     def apply_theme(self, theme: Theme) -> None:
@@ -651,7 +672,9 @@ class Dashboard(QWidget):
 
         def done() -> None:
             self._remember_log_for(step)
-            self._set_status(f"✓ {_SPECS[step].title} — done")
+            # A multi-session auto-combine sets a persisted advisory — surface it over the plain
+            # "done" so the user knows the pipeline combined sessions on their behalf.
+            self._status_with_warning(f"✓ {_SPECS[step].title} — done")
             try:
                 self._refresh_states()
                 if self._session is not None:

@@ -39,6 +39,9 @@ class Manifest:
     steps: dict[str, StepRecord] = field(default_factory=dict)
     notes: str = ""  # free-text manual notes about this subject
     flagged: bool = False  # manual "this subject has a problem" mark
+    # Automatic, run-set advisories keyed by category (e.g. "multi_session"), surfaced in the UI so
+    # the user knows the pipeline did something noteworthy (e.g. auto-combined two sessions).
+    warnings: dict[str, str] = field(default_factory=dict)
 
     def record(self, step: Step) -> StepRecord:
         return self.steps.setdefault(str(step), StepRecord())
@@ -50,6 +53,7 @@ class Manifest:
             "steps": {k: asdict(v) for k, v in self.steps.items()},
             "notes": self.notes,
             "flagged": self.flagged,
+            "warnings": self.warnings,
         }
 
     @classmethod
@@ -57,6 +61,7 @@ class Manifest:
         m = cls(task=d["task"], subject=d["subject"])
         m.notes = d.get("notes", "")
         m.flagged = bool(d.get("flagged", False))
+        m.warnings = dict(d.get("warnings", {}))
         for k, v in d.get("steps", {}).items():
             m.steps[k] = StepRecord(**v)
         return m

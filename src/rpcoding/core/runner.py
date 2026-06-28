@@ -16,7 +16,6 @@ from rpcoding.core.events.condition_events import generate_condition_events
 from rpcoding.core.events.cue_events import generate_cue_events
 from rpcoding.core.matio import load_trialinfo
 from rpcoding.core.mfa.runner import resolve_stim_dir, run_mfa
-from rpcoding.core.paths import find_trials_mat
 from rpcoding.core.progress import Reporter, StepProgress, noop
 from rpcoding.core.retry import retry_transient_io
 from rpcoding.core.rpcode.rpcode2trials import generate_trials
@@ -24,11 +23,22 @@ from rpcoding.core.session import SubjectSession
 from rpcoding.core.steps import STEP_SPECS, EffectiveState, Step, StepKind
 from rpcoding.core.tasks import Task
 from rpcoding.core.trialinfo.build import build_trialinfo
+from rpcoding.core.trials_combine import ResolvedTrials, resolve_trials_mat
 from rpcoding.core.wordlists import DEFAULT_NONWORD_LIST, DEFAULT_WORD_LIST, load_name_list
 
 # Every action takes an optional progress Reporter; it defaults to None so callers that don't care
 # (and the headless tests) can still invoke ``action(session)`` with a single argument.
 StepAction = Callable[[SubjectSession, Reporter | None], None]
+
+# Manifest key for the multi-session advisory (auto-combine / multi-folder merge).
+MULTI_SESSION_WARNING = "multi_session"
+
+
+def _warn_multi_session(s: SubjectSession, report: Reporter | None, message: str) -> None:
+    """Surface a multi-session advisory: a ⚠ line in the run log now + a persisted note for the
+    status bar after the run (see memory: multi-session-support)."""
+    (report or noop)(None, f"⚠ {message}")
+    s.set_warning(MULTI_SESSION_WARNING, message)
 
 
 def _create_results(s: SubjectSession, report: Reporter | None = None) -> None:
@@ -38,8 +48,13 @@ def _create_results(s: SubjectSession, report: Reporter | None = None) -> None:
 
 
 def _concat_wavs(s: SubjectSession, report: Reporter | None = None) -> None:
+    dirs = s.all_blocks_dirs
+    if len(dirs) > 1:
+        _warn_multi_session(
+            s, report, f"Multi-session: concatenating block wavs from {len(dirs)} session folders"
+        )
     combine_wavs(
-        s.all_blocks_dir,
+        dirs,
         s.output_path(paths.ALLBLOCKS_WAV),
         s.output_path(paths.BLOCK_WAV_ONSETS_MAT),
         report=report,
@@ -49,11 +64,18 @@ def _concat_wavs(s: SubjectSession, report: Reporter | None = None) -> None:
 def _build_trialinfo(s: SubjectSession, report: Reporter | None = None) -> None:
     r = report or noop
     r(None, "Merging trialInfo blocks…")
-    build_trialinfo(
-        s.all_blocks_dir,
+    info = build_trialinfo(
+        s.all_blocks_dirs,
         s.output_path(paths.TRIALINFO_MAT),
         s.output_path("trialInfo.report.json"),
     )
+    if info.get("multi_session"):
+        _warn_multi_session(
+            s,
+            report,
+            f"Multi-session: trialInfo merged from {info['n_session_dirs']} session folders "
+            f"({info['total_trials']} trials)",
+        )
     r(1.0, "Built trialInfo.mat")
 
 
@@ -64,10 +86,30 @@ def _denoise(s: SubjectSession, report: Reporter | None = None) -> None:
     return None
 
 
+def _resolve_trials(s: SubjectSession, report: Reporter | None = None) -> ResolvedTrials:
+    """Locate (or auto-combine) the subject's Trials.mat, surfacing the multi-session advisory."""
+    resolved = resolve_trials_mat(s.d_data_subject_dir, s.results_dir)
+    if resolved.auto_combined:
+        _warn_multi_session(
+            s,
+            report,
+            f"Multi-session: auto-combined {len(resolved.sessions)} sessions into Trials.mat "
+            f"({resolved.n_trials} trials) in the results folder",
+        )
+    elif resolved.multi_session:
+        _warn_multi_session(
+            s,
+            report,
+            f"Multi-session: using existing combined Trials.mat "
+            f"({len(resolved.sessions)} sessions)",
+        )
+    return resolved
+
+
 def _make_events(s: SubjectSession, report: Reporter | None = None) -> None:
     r = report or noop
     r(0.05, "Locating Trials.mat…")
-    trials_mat = find_trials_mat(s.d_data_subject_dir)
+    trials_mat = _resolve_trials(s, report).path
     r(0.25, "Generating cue events…")
     generate_cue_events(s.results_dir, trials_mat)
     r(0.65, "Generating condition events…")
@@ -196,7 +238,7 @@ def _write_trials(s: SubjectSession, report: Reporter | None = None) -> None:
     r(0.35, "Loading trialInfo…")
     trialinfo = load_trialinfo(s.output_path(paths.TRIALINFO_MAT))
     r(0.5, "Locating Trials.mat…")
-    trials_mat = find_trials_mat(s.d_data_subject_dir)
+    trials_mat = _resolve_trials(s, report).path
     r(0.6, "Computing tags + writing Trials.mat…")
     generate_trials(s.results_dir, trials_mat, trialinfo, words, nonwords, task=s.task)
     r(1.0, "Wrote Trials.mat")

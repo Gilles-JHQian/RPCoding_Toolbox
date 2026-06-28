@@ -9,6 +9,7 @@ index where the block begins in the concatenated signal and the sample rate -- e
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -49,13 +50,8 @@ def block_number(filename: str) -> int | None:
 _PER_TRIAL_RE = re.compile(r"_Trial_\d+", re.IGNORECASE)
 
 
-def discover_block_wavs(directory: Path | str) -> list[tuple[int, Path]]:
-    """Find block wavs in ``directory`` -> ``[(block_number, path), ...]`` sorted by number.
-
-    Matches ``*_Block_<n>_*.wav`` (e.g. ``D134_Block_1_AllTrials.wav``) and legacy ``block<n>.wav``,
-    skipping per-trial (``*_Trial_<m>*``) and practice files. Raises on a duplicate block number.
-    """
-    directory = Path(directory)
+def _block_wavs_in_dir(directory: Path) -> dict[int, Path]:
+    """Block wavs in a single dir -> ``{block_number: path}``; raises on an in-dir duplicate."""
     found: dict[int, Path] = {}
     for p in sorted(directory.glob("*.wav")):
         if _PER_TRIAL_RE.search(p.name) or "pract" in p.name.lower():
@@ -66,7 +62,38 @@ def discover_block_wavs(directory: Path | str) -> list[tuple[int, Path]]:
         if n in found:
             raise ValueError(f"Duplicate block {n}: {found[n].name} and {p.name}")
         found[n] = p
-    return sorted(found.items())
+    return found
+
+
+def _wav_size(p: Path) -> int:
+    """File size as a completeness proxy (a cloud placeholder / unreadable file counts as 0)."""
+    try:
+        return p.stat().st_size
+    except OSError:
+        return 0
+
+
+def discover_block_wavs(
+    directory: Path | str | Iterable[Path | str],
+) -> list[tuple[int, Path]]:
+    """Find block wavs in one dir or several -> ``[(block_number, path), ...]`` sorted by number.
+
+    Matches ``*_Block_<n>_*.wav`` (e.g. ``D134_Block_1_AllTrials.wav``) and legacy ``block<n>.wav``,
+    skipping per-trial (``*_Trial_<m>*``) and practice files. A duplicate block number *within one
+    dir* raises; a block recorded in *several session folders* (multi-session subject) is resolved
+    to the most-complete (largest) file, then the latest session — the "most complete / last" rule.
+    """
+    if isinstance(directory, (str, Path)):
+        dirs: list[Path] = [Path(directory)]
+    else:
+        dirs = [Path(d) for d in directory]
+    chosen: dict[int, Path] = {}
+    for d in dirs:
+        for n, p in _block_wavs_in_dir(d).items():
+            prev = chosen.get(n)
+            if prev is None or (_wav_size(p), str(p)) >= (_wav_size(prev), str(prev)):
+                chosen[n] = p
+    return sorted(chosen.items())
 
 
 def concatenate_blocks(
@@ -121,13 +148,14 @@ def load_block_wav_onsets(path: Path | str) -> np.ndarray:
 
 
 def combine_wavs(
-    block_dir: Path | str,
+    block_dir: Path | str | Iterable[Path | str],
     out_wav: Path | str,
     out_onsets_mat: Path | str,
     pad_seconds: float = DEFAULT_PAD_SECONDS,
     report: Reporter | None = None,
 ) -> ConcatResult:
-    """Discover blocks in ``block_dir``, concatenate, write allblocks.wav + onsets.mat."""
+    """Discover blocks in ``block_dir`` (one dir or several), concatenate, write allblocks.wav +
+    onsets.mat. Pass several dirs for a multi-session subject (see :func:`discover_block_wavs`)."""
     r = report or noop
     blocks = discover_block_wavs(block_dir)
     if not blocks:

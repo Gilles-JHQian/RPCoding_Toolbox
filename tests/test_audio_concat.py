@@ -50,6 +50,36 @@ def test_concatenate_onsets_and_padding(tmp_path):
     np.testing.assert_allclose(res.audio[5 : 5 + padlen], 0.0, atol=1e-6)
 
 
+def test_discover_aggregates_multiple_dirs(tmp_path):
+    s1, s2 = tmp_path / "sess1", tmp_path / "sess2"
+    s1.mkdir()
+    s2.mkdir()
+    _write(s1 / "D9_Block_1_AllTrials.wav", np.zeros(10), 1000)
+    _write(s1 / "D9_Block_2_AllTrials.wav", np.zeros(10), 1000)
+    _write(s2 / "D9_Block_3_AllTrials.wav", np.zeros(10), 1000)
+    blocks = concat.discover_block_wavs([s1, s2])
+    assert [n for n, _ in blocks] == [1, 2, 3]
+    assert blocks[2][1].parent == s2
+
+
+def test_discover_cross_session_dup_prefers_larger_then_later(tmp_path):
+    s1, s2 = tmp_path / "sess1", tmp_path / "sess2"
+    s1.mkdir()
+    s2.mkdir()
+    _write(s1 / "D9_Block_1_AllTrials.wav", np.zeros(4), 1000)  # smaller (aborted)
+    _write(s2 / "D9_Block_1_AllTrials.wav", np.zeros(40), 1000)  # larger (complete) -> wins
+    blocks = concat.discover_block_wavs([s1, s2])
+    assert len(blocks) == 1
+    assert blocks[0][1].parent == s2
+
+
+def test_discover_in_dir_duplicate_still_raises(tmp_path):
+    _write(tmp_path / "D9_Block_1_AllTrials.wav", np.zeros(4), 1000)
+    _write(tmp_path / "block1.wav", np.zeros(4), 1000)  # same block number, one dir
+    with pytest.raises(ValueError, match="Duplicate block 1"):
+        concat.discover_block_wavs(tmp_path)
+
+
 def test_fs_mismatch_raises(tmp_path):
     _write(tmp_path / "block1.wav", np.zeros(4), 1000)
     _write(tmp_path / "block2.wav", np.zeros(4), 2000)

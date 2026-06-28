@@ -98,6 +98,41 @@ def test_build_trialinfo_roundtrip(tmp_path):
     assert block_sequence(reloaded) == [1, 2, 3, 4]
 
 
+def test_discover_aggregates_multiple_dirs(tmp_path):
+    # blocks split across two session folders (multi-session subject)
+    s1, s2 = tmp_path / "sess1", tmp_path / "sess2"
+    s1.mkdir()
+    s2.mkdir()
+    _save_trialdata(s1 / "D9_Block_2_TrialData.mat", [1, 1, 2, 2])
+    _save_trialdata(s2 / "D9_Block_4_TrialData.mat", [3, 3, 4, 4])
+    files = discover_trialdata_files([s1, s2])
+    assert sorted(f.block_num for f in files) == [2, 4]
+    combined, info = select_and_combine(files)
+    assert block_sequence(combined) == [1, 2, 3, 4]
+    assert len(combined) == 8
+    assert info["multi_session"] is True
+    assert info["n_session_dirs"] == 2
+
+
+def test_select_cross_session_dup_prefers_most_complete(tmp_path):
+    # block 3 appears in both sessions: half-aborted in sess1, full in sess2 -> take the full one
+    s1, s2 = tmp_path / "sess1", tmp_path / "sess2"
+    s1.mkdir()
+    s2.mkdir()
+    _save_trialdata(s1 / "D9_Block_2_TrialData.mat", [1, 1, 2, 2])
+    _save_trialdata(s1 / "D9_Block_3_TrialData.mat", [1, 1, 2, 2, 3])  # aborted block 3 (1 trial)
+    _save_trialdata(s2 / "D9_Block_3_TrialData.mat", [3, 3, 3])  # full block 3 redo
+    _save_trialdata(s2 / "D9_Block_4_TrialData.mat", [3, 3, 3, 4, 4, 4])
+    combined, info = select_and_combine(discover_trialdata_files([s1, s2]))
+    assert block_sequence(combined) == [1, 2, 3, 4]
+    # block 1+2 from sess1's Block_2 (4) + blocks 3+4 from sess2's Block_4 (6) = 10
+    assert len(combined) == 10
+    assert [s["file"] for s in info["selected_files"]] == [
+        "D9_Block_2_TrialData.mat",
+        "D9_Block_4_TrialData.mat",
+    ]
+
+
 def test_homogenize_trials():
     trials = [{"a": 1.0, "b": "x"}, {"a": 2.0}]
     out = homogenize_trials(trials)
