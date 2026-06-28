@@ -105,19 +105,8 @@ def _block_dirs_under(root: Path, max_depth: int = 4) -> dict[Path, set[int]]:
     return out
 
 
-def resolve_blocks_dir(subject_dir: Path | str, task: Task | str) -> Path:
-    """Find the directory actually holding this task's per-block wavs / TrialData mats.
-
-    Clean subjects keep them in ``<subj>/Lexical No Delay/All Blocks``, but acquisition was wildly
-    inconsistent: the task folder may be named ``Lexical``, the block folder a timestamped session
-    (e.g. ``…_NoDelay_201810281549``) possibly nested a level deep, and the same folder can mix
-    practice and real sessions. Strategy: narrow to the matching task-group folder(s), collect the
-    dirs holding non-practice block TrialData mats, and pick the one whose path best matches the
-    task (NoDelay vs Delay) then has the most blocks. Falls back to the conventional path.
-    """
-    subject_dir = Path(subject_dir)
-    task = Task.from_str(task) if not isinstance(task, Task) else task
-
+def _candidate_block_dirs(subject_dir: Path, task: Task) -> dict[Path, set[int]]:
+    """Dirs under the task-group folder(s) holding non-practice block TrialData -> block numbers."""
     group = _TASK_GROUP.get(task, "")
     try:
         groups = [
@@ -128,22 +117,77 @@ def resolve_blocks_dir(subject_dir: Path | str, task: Task | str) -> Path:
     candidates: dict[Path, set[int]] = {}
     for root in groups or [subject_dir]:
         candidates.update(_block_dirs_under(root))
-    if not candidates:
-        return subject_dir / cogan_task_folder(task) / "All Blocks"
+    return candidates
 
+
+def _block_dir_score(d: Path, candidates: dict[Path, set[int]], task: Task) -> int:
+    """Rank a candidate block dir: keyword match dominates, then block count (NoDelay vs Delay)."""
+    norm = _norm(str(d))
     keyword = _TASK_KEYWORD.get(task)
     anti = _TASK_ANTI_KEYWORD.get(task)
+    s = len(candidates[d])
+    if keyword and keyword in norm:
+        s += 1000
+    if anti and anti in norm:
+        s -= 1000
+    return s
 
-    def score(d: Path) -> int:
-        norm = _norm(str(d))
-        s = len(candidates[d])
-        if keyword and keyword in norm:
-            s += 1000
-        if anti and anti in norm:
-            s -= 1000
-        return s
 
-    return max(candidates, key=score)
+def _matches_task(d: Path, task: Task) -> bool:
+    """Whether a candidate dir's path is consistent with ``task`` (NoDelay vs Delay disambiguation).
+
+    A Delay session must carry ``delay`` but not ``nodelay``; a NoDelay session must carry
+    ``nodelay``. Tasks without a keyword (Uniqueness Point) match any candidate under their group.
+    """
+    norm = _norm(str(d))
+    keyword = _TASK_KEYWORD.get(task)
+    anti = _TASK_ANTI_KEYWORD.get(task)
+    if keyword and keyword not in norm:
+        return False
+    if anti and anti in norm:
+        return False
+    return True
+
+
+def resolve_blocks_dir(subject_dir: Path | str, task: Task | str) -> Path:
+    """Find the single best directory holding this task's per-block wavs / TrialData mats.
+
+    Clean subjects keep them in ``<subj>/Lexical No Delay/All Blocks``, but acquisition was wildly
+    inconsistent: the task folder may be named ``Lexical``, the block folder a timestamped session
+    (e.g. ``…_NoDelay_201810281549``) possibly nested a level deep, and the same folder can mix
+    practice and real sessions. Strategy: narrow to the matching task-group folder(s), collect the
+    dirs holding non-practice block TrialData mats, and pick the one whose path best matches the
+    task (NoDelay vs Delay) then has the most blocks. Falls back to the conventional path.
+
+    For subjects recorded across **multiple sessions** (blocks split over two session folders), use
+    :func:`resolve_block_dirs` to get *all* of them; this picks only one.
+    """
+    subject_dir = Path(subject_dir)
+    task = Task.from_str(task) if not isinstance(task, Task) else task
+    candidates = _candidate_block_dirs(subject_dir, task)
+    if not candidates:
+        return subject_dir / cogan_task_folder(task) / "All Blocks"
+    return max(candidates, key=lambda d: _block_dir_score(d, candidates, task))
+
+
+def resolve_block_dirs(subject_dir: Path | str, task: Task | str) -> list[Path]:
+    """All session folders holding this task's blocks (multi-session aware), sorted for determinism.
+
+    A single-session subject yields one folder (same as :func:`resolve_blocks_dir`); a subject run
+    across two sessions/days yields both timestamped session folders (e.g. blocks 1-2 in one, 3-4 in
+    the other). Returns the candidates whose path matches the task; always includes the single best
+    pick so behaviour never regresses below :func:`resolve_blocks_dir`. Falls back to the
+    conventional path when nothing is found.
+    """
+    subject_dir = Path(subject_dir)
+    task = Task.from_str(task) if not isinstance(task, Task) else task
+    candidates = _candidate_block_dirs(subject_dir, task)
+    if not candidates:
+        return [subject_dir / cogan_task_folder(task) / "All Blocks"]
+    best = max(candidates, key=lambda d: _block_dir_score(d, candidates, task))
+    matched = {d for d in candidates if _matches_task(d, task)}
+    matched.add(best)  # never regress below the single-best pick
+    return sorted(matched)
 
 
 def results_root(droot: Path | str, task: Task | str) -> Path:

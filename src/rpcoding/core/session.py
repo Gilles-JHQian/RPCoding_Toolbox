@@ -50,6 +50,7 @@ class SubjectSession:
     results_dir: Path = field(init=False)
     manifest: Manifest = field(init=False)
     _blocks_dir: Path | None = field(init=False, default=None)
+    _blocks_dirs: list[Path] | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         self.results_dir = paths.results_dir(self.config.droot, self.task, self.subject)
@@ -71,11 +72,20 @@ class SubjectSession:
 
     @property
     def all_blocks_dir(self) -> Path:
-        """The per-block wav/mat dir — resolved (name/subfolder-tolerant), memoized."""
+        """The single best per-block wav/mat dir — resolved (name/subfolder-tolerant), memoized."""
         if self._blocks_dir is None:
             subject_dir = paths.cogan_subject_dir(self.config.droot, self.subject)
             self._blocks_dir = paths.resolve_blocks_dir(subject_dir, self.task)
         return self._blocks_dir
+
+    @property
+    def all_blocks_dirs(self) -> list[Path]:
+        """All per-block session dirs (multi-session aware). One for most subjects; two when a task
+        was recorded across separate session folders. Feed these to trialInfo build / wav concat."""
+        if self._blocks_dirs is None:
+            subject_dir = paths.cogan_subject_dir(self.config.droot, self.subject)
+            self._blocks_dirs = paths.resolve_block_dirs(subject_dir, self.task)
+        return self._blocks_dirs
 
     def output_path(self, rel: str) -> Path:
         return self.results_dir / rel
@@ -248,6 +258,25 @@ class SubjectSession:
             return
         self.manifest.flagged = bool(value)
         self.save()
+
+    # ---- automatic run advisories (e.g. multi-session auto-combine) ----
+    @property
+    def warnings(self) -> dict[str, str]:
+        """Automatic advisories set by the last run, keyed by category (see :class:`Manifest`)."""
+        return dict(self.manifest.warnings)
+
+    def set_warning(self, key: str, message: str) -> None:
+        """Record (and persist) an automatic advisory for ``key``; no-op if unchanged."""
+        if self.manifest.warnings.get(key) == message:
+            return
+        self.manifest.warnings[key] = message
+        self.save()
+
+    def clear_warning(self, key: str) -> None:
+        """Drop the advisory for ``key`` (e.g. a subject that is no longer multi-session)."""
+        if key in self.manifest.warnings:
+            del self.manifest.warnings[key]
+            self.save()
 
     def step_error(self, step: Step) -> str | None:
         """The recorded error message for a step (for the dashboard chip tooltip), if any."""

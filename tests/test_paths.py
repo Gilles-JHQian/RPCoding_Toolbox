@@ -77,6 +77,44 @@ def test_resolve_blocks_dir_fallback_when_absent(tmp_path):
     )
 
 
+# ---- resolve_block_dirs (multi-session) ----
+
+
+def test_resolve_block_dirs_single_session(tmp_path):
+    subj = tmp_path / "D9"
+    blocks = subj / "Lexical No Delay" / "All Blocks"
+    _make_block_mats(blocks, "D9", 1, 2, 3, 4)
+    assert paths.resolve_block_dirs(subj, Task.LEXICAL_NODELAY) == [blocks]
+
+
+def test_resolve_block_dirs_two_session_folders(tmp_path):
+    subj = tmp_path / "D133"  # two timestamped sessions under one task folder, blocks split
+    ab = subj / "Lexical No Delay" / "All Blocks"
+    s1 = ab / "D133_2025861537"
+    s2 = ab / "D133_2025871228"
+    _make_block_mats(s1, "D133", 1, 2)
+    _make_block_mats(s2, "D133", 3, 4)
+    assert paths.resolve_block_dirs(subj, Task.LEXICAL_NODELAY) == sorted([s1, s2])
+
+
+def test_resolve_block_dirs_excludes_other_task(tmp_path):
+    subj = tmp_path / "D50"
+    nod = subj / "Lexical" / "D50_Lex_NoDelay_x"
+    dly = subj / "Lexical" / "D50_Lex_Delay_y"
+    _make_block_mats(nod, "D50", 1, 2)
+    _make_block_mats(dly, "D50", 1, 2)
+    assert paths.resolve_block_dirs(subj, Task.LEXICAL_NODELAY) == [nod]
+    assert paths.resolve_block_dirs(subj, Task.LEXICAL_DELAY) == [dly]
+
+
+def test_resolve_block_dirs_fallback_when_absent(tmp_path):
+    subj = tmp_path / "D1"
+    subj.mkdir()
+    assert paths.resolve_block_dirs(subj, Task.LEXICAL_NODELAY) == [
+        subj / "Lexical No Delay" / "All Blocks"
+    ]
+
+
 # ---- find_trials_mat ----
 
 

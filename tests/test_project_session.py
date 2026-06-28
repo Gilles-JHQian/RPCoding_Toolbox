@@ -10,8 +10,10 @@ import soundfile as sf
 
 from rpcoding.cli.main import main as cli_main
 from rpcoding.core import paths
+from rpcoding.core.audio import concat
 from rpcoding.core.config import AppConfig
 from rpcoding.core.manifest import Manifest
+from rpcoding.core.matio import load_trialinfo
 from rpcoding.core.runner import (
     BATCH_ACTIONS,
     DEFAULT_ACTIONS,
@@ -47,6 +49,23 @@ def _build_subject(droot, subject="D9", fs=1000):
         sf.write(str(ab / f"{subject}_Block_{b}_AllTrials.wav"), np.zeros(fs), fs, subtype="PCM_16")
     _save_trialdata(ab / f"{subject}_Block_1_TrialData.mat", [1, 1])
     _save_trialdata(ab / f"{subject}_Block_2_TrialData.mat", [1, 1, 2, 2])
+    paths.d_data_subject_dir(droot, _TASK, subject).mkdir(parents=True)
+    return cfg
+
+
+def _build_two_session_subject(droot, subject="D133", fs=1000):
+    """A multi-session raw tree: blocks 1-2 in one session folder, 3-4 in another."""
+    cfg = AppConfig(droot=droot)
+    ab = paths.cogan_task_data_dir(droot, subject, _TASK)
+    s1, s2 = ab / f"{subject}_sess1", ab / f"{subject}_sess2"
+    s1.mkdir(parents=True)
+    s2.mkdir(parents=True)
+    for b in (1, 2):
+        sf.write(str(s1 / f"{subject}_Block_{b}_AllTrials.wav"), np.zeros(fs), fs, subtype="PCM_16")
+    for b in (3, 4):
+        sf.write(str(s2 / f"{subject}_Block_{b}_AllTrials.wav"), np.zeros(fs), fs, subtype="PCM_16")
+    _save_trialdata(s1 / f"{subject}_Block_2_TrialData.mat", [1, 1, 2, 2])
+    _save_trialdata(s2 / f"{subject}_Block_4_TrialData.mat", [3, 3, 4, 4])
     paths.d_data_subject_dir(droot, _TASK, subject).mkdir(parents=True)
     return cfg
 
@@ -117,6 +136,57 @@ def test_flagged_subject_summary_is_flagged(tmp_path):
     assert s.summary()[2] == EffectiveState.NOT_STARTED
     s.set_flagged(True)
     assert s.summary()[2] == EffectiveState.FLAGGED  # the manual flag wins over computed status
+
+
+def test_manifest_warnings_roundtrip(tmp_path):
+    m = Manifest("T", "D1")
+    m.warnings["multi_session"] = "auto-combined 2 sessions"
+    p = tmp_path / "m.json"
+    m.save(p)
+    assert Manifest.load(p).warnings == {"multi_session": "auto-combined 2 sessions"}
+    # back-compat: a manifest written before the field existed loads with an empty dict
+    assert Manifest.from_dict({"task": "T", "subject": "D1"}).warnings == {}
+
+
+def test_session_warning_persists(tmp_path):
+    s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")
+    assert s.warnings == {}
+    s.set_warning("multi_session", "auto-combined 2 sessions")
+    reloaded = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")
+    assert reloaded.warnings == {"multi_session": "auto-combined 2 sessions"}
+    s.clear_warning("multi_session")
+    assert SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9").warnings == {}
+
+
+# ---- multi-session subjects ----
+
+
+def test_multi_session_build_trialinfo_spans_folders_and_warns(tmp_path):
+    cfg = _build_two_session_subject(tmp_path)
+    s = SubjectSession(cfg, _TASK, "D133")
+    assert len(s.all_blocks_dirs) == 2
+    run_step(s, Step.BUILD_TRIALINFO)
+    assert len(load_trialinfo(s.output_path(paths.TRIALINFO_MAT))) == 8  # 2 folders x 4 trials
+    assert "multi_session" in s.warnings
+    # the advisory persisted to the manifest
+    assert "multi_session" in SubjectSession(cfg, _TASK, "D133").warnings
+
+
+def test_multi_session_concat_wavs_spans_folders_and_warns(tmp_path):
+    cfg = _build_two_session_subject(tmp_path)
+    s = SubjectSession(cfg, _TASK, "D133")
+    run_step(s, Step.CONCAT_WAVS)
+    assert s.output_path(paths.ALLBLOCKS_WAV).exists()
+    onsets = concat.load_block_wav_onsets(s.output_path(paths.BLOCK_WAV_ONSETS_MAT))
+    assert onsets.shape[0] == 4  # all four blocks concatenated, across both session folders
+    assert "multi_session" in s.warnings
+
+
+def test_single_session_sets_no_warning(tmp_path):
+    cfg = _build_subject(tmp_path)
+    s = SubjectSession(cfg, _TASK, "D9")
+    run_step(s, Step.BUILD_TRIALINFO)
+    assert s.warnings == {}
 
 
 # ---- session state ----

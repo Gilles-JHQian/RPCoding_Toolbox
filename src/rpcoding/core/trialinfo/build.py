@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,25 +44,36 @@ class TrialDataFile:
         return self.blocks[-1]
 
 
-def discover_trialdata_files(all_blocks_dir: Path | str) -> list[TrialDataFile]:
-    """Load every ``*_Block_N_TrialData.mat`` in ``all_blocks_dir`` (Practice files excluded)."""
-    all_blocks_dir = Path(all_blocks_dir)
+def discover_trialdata_files(
+    all_blocks_dir: Path | str | Iterable[Path | str],
+) -> list[TrialDataFile]:
+    """Load every ``*_Block_N_TrialData.mat`` (Practice excluded) from one dir or several.
+
+    Pass an iterable of dirs for a multi-session subject whose blocks are split across session
+    folders; the files are aggregated (and :func:`select_and_combine` resolves any block that
+    appears in more than one session).
+    """
+    if isinstance(all_blocks_dir, (str, Path)):
+        dirs: list[Path] = [Path(all_blocks_dir)]
+    else:
+        dirs = [Path(d) for d in all_blocks_dir]
     files: list[TrialDataFile] = []
-    for p in sorted(all_blocks_dir.glob("*_TrialData.mat")):
-        if "pract" in p.name.lower():  # 'Practice' or 'Pract'
-            continue
-        m = _TRIALDATA_RE.search(p.name)
-        if not m:
-            continue
-        trials = load_trialinfo(p)
-        files.append(
-            TrialDataFile(
-                path=p,
-                block_num=int(m.group(1)),
-                trials=trials,
-                blocks=block_sequence(trials),
+    for d in dirs:
+        for p in sorted(d.glob("*_TrialData.mat")):
+            if "pract" in p.name.lower():  # 'Practice' or 'Pract'
+                continue
+            m = _TRIALDATA_RE.search(p.name)
+            if not m:
+                continue
+            trials = load_trialinfo(p)
+            files.append(
+                TrialDataFile(
+                    path=p,
+                    block_num=int(m.group(1)),
+                    trials=trials,
+                    blocks=block_sequence(trials),
+                )
             )
-        )
     return files
 
 
@@ -79,7 +91,12 @@ def select_and_combine(files: list[TrialDataFile]) -> tuple[list[dict], dict]:
             raise IncompleteTrialInfoError(
                 f"No TrialData file ends at block {need}; cannot cover blocks 1..{target_max}"
             )
-        chosen = min(candidates, key=lambda f: f.min_block)  # widest coverage
+        # Widest coverage first (smallest min_block); on a cross-session tie pick the most-complete
+        # run, then the latest session folder. So a block half-aborted in one session loses to its
+        # full re-run in another (the user's "most complete / last" rule).
+        widest = min(f.min_block for f in candidates)
+        tied = [f for f in candidates if f.min_block == widest]
+        chosen = max(tied, key=lambda f: (len(f.trials), str(f.path)))
         selected.append(chosen)
         need = chosen.min_block - 1
     selected.reverse()
@@ -91,10 +108,13 @@ def select_and_combine(files: list[TrialDataFile]) -> tuple[list[dict], dict]:
             f"Combined block sequence {seq} is not contiguous 1..{target_max}"
         )
 
+    session_dirs = {str(f.path.parent) for f in selected}
     info = {
         "target_max_block": target_max,
         "total_trials": len(combined),
         "combined_from_single_file": len(selected) == 1,
+        "n_session_dirs": len(session_dirs),
+        "multi_session": len(session_dirs) > 1,
         "selected_files": [
             {"file": f.path.name, "blocks": f.blocks, "n_trials": len(f.trials)} for f in selected
         ],
@@ -111,11 +131,15 @@ def save_trialinfo(path: Path | str, trials: list[dict]) -> None:
 
 
 def build_trialinfo(
-    all_blocks_dir: Path | str,
+    all_blocks_dir: Path | str | Iterable[Path | str],
     out_mat: Path | str,
     provenance_path: Path | str | None = None,
 ) -> dict:
-    """Discover, combine, and write trialInfo.mat (+ optional provenance json). Returns the info."""
+    """Discover, combine, and write trialInfo.mat (+ optional provenance json). Returns the info.
+
+    ``all_blocks_dir`` may be a single dir or several (a multi-session subject); see
+    :func:`discover_trialdata_files`.
+    """
     files = discover_trialdata_files(all_blocks_dir)
     if not files:
         raise FileNotFoundError(f"No *_TrialData.mat files in {all_blocks_dir}")
