@@ -12,7 +12,13 @@ from rpcoding.cli.main import main as cli_main
 from rpcoding.core import paths
 from rpcoding.core.config import AppConfig
 from rpcoding.core.manifest import Manifest
-from rpcoding.core.runner import run_pipeline, run_step
+from rpcoding.core.runner import (
+    BATCH_ACTIONS,
+    DEFAULT_ACTIONS,
+    run_batch,
+    run_pipeline,
+    run_step,
+)
 from rpcoding.core.scanner import scan_subjects
 from rpcoding.core.session import SubjectSession
 from rpcoding.core.steps import STEP_SPECS, EffectiveState, Step
@@ -380,6 +386,60 @@ def test_run_pipeline_reports_step_progress(tmp_path):
     pairs = zip(overalls, overalls[1:], strict=False)
     assert all(b >= a - 1e-9 for a, b in pairs)  # never goes backwards
     assert overalls[-1] == 1.0
+
+
+def _mark_done_through_mfa(s: SubjectSession) -> None:
+    """Populate the result files so every step up to (and including) MFA reads as done on disk."""
+    rd = s.results_dir
+    (rd / paths.MFA_DIRNAME).mkdir(parents=True)
+    for name in (
+        paths.ALLBLOCKS_WAV,
+        paths.TRIALINFO_MAT,
+        paths.FIRST_STIMS_TXT,
+        paths.CUE_EVENTS_TXT,
+        paths.CONDITION_EVENTS_TXT,
+    ):
+        (rd / name).write_bytes(b"x")
+    (rd / paths.MFA_DIRNAME / "mfa_stim_words.txt").write_bytes(b"x")  # non-empty == produced
+
+
+def test_run_pipeline_stops_at_undone_response_coding(tmp_path):
+    # Through MFA is done but response coding (manual) isn't -> write-Trials must NOT run.
+    cfg = _build_subject(tmp_path)
+    s = SubjectSession(cfg, _TASK, "D9")
+    _mark_done_through_mfa(s)
+    assert s.effective_state(Step.RESPONSE_CODING) == EffectiveState.NEEDS_MANUAL
+    ran_write = []
+    actions = {**DEFAULT_ACTIONS, Step.WRITE_TRIALS: lambda _s, _r=None: ran_write.append(True)}
+    ran = run_pipeline(s, actions)
+    assert Step.WRITE_TRIALS not in ran and ran_write == []
+
+
+def test_batch_actions_exclude_write_trials():
+    # The terminal Box write-back is never an unattended batch action.
+    assert Step.WRITE_TRIALS in DEFAULT_ACTIONS
+    assert Step.WRITE_TRIALS not in BATCH_ACTIONS
+
+
+def test_run_pipeline_should_cancel_stops_immediately(tmp_path):
+    cfg = _build_subject(tmp_path)
+    s = SubjectSession(cfg, _TASK, "D9")
+    assert run_pipeline(s, should_cancel=lambda: True) == []
+
+
+def test_run_batch_should_cancel_skips_remaining(tmp_path):
+    cfg = _build_subject(tmp_path, "D9")
+    _build_subject(tmp_path, "D10")
+    seen: list[str] = []
+    res = run_batch(
+        cfg,
+        _TASK,
+        ["D9", "D10"],
+        on_progress=lambda subj, _r: seen.append(subj),
+        should_cancel=lambda: len(seen) >= 1,  # cancel once the first subject finishes
+    )
+    assert seen == ["D9"]
+    assert "D9" in res and "D10" not in res
 
 
 def test_run_step_records_error(tmp_path):
