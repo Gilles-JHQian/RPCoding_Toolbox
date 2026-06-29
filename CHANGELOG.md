@@ -325,6 +325,10 @@ UP (downstream `rpcode2trials` / word-lists are still lexical-only and come late
 
 ### Fixed (later)
 
+- **Response palette "LATR_RESP" → "LATE_RESP" typo** (`fix/latr-resp-typo`): the editor's late-
+  response quick-tag read `LATR_RESP`, but the tag rpcode2trials actually writes (and that MATLAB
+  `bsliang_rpcode2trials.m` derives) is `LATE_RESP`. The palette code is never consumed by the
+  pipeline, so no data was affected — but the spelling now matches the canonical derived tag.
 - **Spectrogram was drawn ~17 ms too early** (`fix/spectrogram-time-alignment`): the spectrogram
   sat slightly left of the waveform, so a stop burst / high-energy peak appeared *before* the
   envelope showed it. `scipy.signal.stft(boundary=None)` centres frame `c` on sample

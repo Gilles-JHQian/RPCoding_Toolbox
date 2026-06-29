@@ -37,7 +37,9 @@ _LEXICAL_TAGS: list[tuple[str, str]] = [
     ("ERR_RESP_REP_WRO", "Repetition: a totally wrong word/nonword (edit to add it)"),
     ("ERR_RESP_REP_MIS", "Repetition: phonemic/syllabic mistakes (edit to add it)"),
     ("NOISY", "Noisy / response unclear"),
-    ("LATR_RESP", "Late response (responding out of the trial)"),
+    # LATE_RESP matches the timing-derived tag rpcode2trials writes (MATLAB bsliang_rpcode2trials.m
+    # uses 'LATE_RESP'); the Wiki's "LATR_RESP" spelling was a typo.
+    ("LATE_RESP", "Late response (responding out of the trial)"),
 ]
 
 # Wiki: Lexical Delay (pp. 9-10); Lexical No-Delay (p. 15) reuses the same set (coded only in Repeat

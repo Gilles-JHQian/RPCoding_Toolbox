@@ -27,7 +27,7 @@ def test_response_tags_per_task():
         "ERR_RESP_REP_WRO",
         "ERR_RESP_REP_MIS",
         "NOISY",
-        "LATR_RESP",
+        "LATE_RESP",
     ]
     # No-Delay reuses the same set; every tag carries a tooltip description.
     assert response_tags(Task.LEXICAL_NODELAY) == response_tags(Task.LEXICAL_DELAY)
