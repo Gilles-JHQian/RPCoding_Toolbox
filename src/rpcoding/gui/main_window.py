@@ -180,9 +180,45 @@ class MainWindow(QMainWindow):
         if self._editing is None:
             return
         session, step = self._editing
-        if step is not None:  # clock-anchor mode (step None) just persists clock_anchors.txt
+        if step is not None:
             session.record_done(step)
+        else:  # clock-anchor mode: anchors saved -> offer to apply the drift correction
+            self._maybe_apply_clock_fix(session)
         self._dashboard.refresh()
+
+    def _maybe_apply_clock_fix(self, session) -> None:  # noqa: ANN001
+        """After clock anchors are saved, offer to correct cue/condition events from them."""
+        from PySide6.QtWidgets import QMessageBox
+
+        reply = QMessageBox.question(
+            self,
+            "Clock drift",
+            "Anchors saved to clock_anchors.txt.\n\nApply the clock-drift correction to "
+            "cue_events / condition_events now? (originals are backed up first)",
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            from rpcoding.core.clock_fix import apply_clock_fix
+            from rpcoding.core.trials_combine import resolve_trials_mat
+
+            resolved = resolve_trials_mat(session.d_data_subject_dir, session.results_dir)
+            report = apply_clock_fix(session.results_dir, resolved.path)
+        except Exception as exc:  # noqa: BLE001 - surfaced to the user
+            show_error("Could not apply the clock-drift correction", str(exc), parent=self)
+            return
+        lines = [
+            f"Corrected {report['corrected_blocks']} block(s) from {report['n_anchors']} anchors."
+        ]
+        for f in report["blocks"]:
+            lines.append(
+                f"  block {f.block}: {f.n_anchors} anchor(s), end shift {f.end_shift_ms:+.0f} ms, "
+                f"rate {f.rate_ppm:+.0f} ppm"
+                if f.corrected
+                else f"  block {f.block}: only {f.n_anchors} anchor(s) — left unchanged"
+            )
+        lines.append("\nOriginals backed up to *.before_clock_fix.txt.")
+        QMessageBox.information(self, "Clock drift corrected", "\n".join(lines))
 
     def _on_denoised(self) -> None:
         """Noise reduction was applied in the editor — mark the Denoise step done (whatever step
