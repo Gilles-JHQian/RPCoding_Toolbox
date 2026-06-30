@@ -41,6 +41,8 @@ TRIALINFO_MAT = "trialInfo.mat"
 FIRST_STIMS_TXT = "first_stims.txt"
 CUE_EVENTS_TXT = "cue_events.txt"
 CONDITION_EVENTS_TXT = "condition_events.txt"
+# Manual anchors (true stimulus position vs cue) used by the clock-drift fix gadget.
+CLOCK_ANCHORS_TXT = "clock_anchors.txt"
 RESP_WORDS_ERRORS_TXT = "bsliang_resp_words_errors.txt"
 MFA_DIRNAME = "mfa"
 
