@@ -34,6 +34,7 @@ class MainWindow(QMainWindow):
         self._dashboard = Dashboard(config, theme)
         self._dashboard.theme_toggle_requested.connect(self.toggle_theme)
         self._dashboard.open_editor.connect(self._open_editor)
+        self._dashboard.open_clock_editor.connect(self._open_clock_editor)
         self.setCentralWidget(self._dashboard)
 
         # The editor is built lazily on first open: importing it pulls pyqtgraph + scipy.signal
@@ -78,6 +79,29 @@ class MainWindow(QMainWindow):
     def _open_editor(self, session, step) -> None:  # noqa: ANN001 - Qt signal payloads
         from rpcoding.gui.editor_loader import tiers_for_step
 
+        specs, save_path = tiers_for_step(session.results_dir, step)
+        self._open_editor_with(
+            session,
+            step,
+            specs,
+            save_path,
+            f"{session.subject} · {step.value} — Annotation Editor",
+        )
+
+    def _open_clock_editor(self, session) -> None:  # noqa: ANN001 - Qt signal payload
+        """Open the editor to mark clock-drift anchors (no pipeline step is recorded on save)."""
+        from rpcoding.gui.editor_loader import tiers_for_clock_anchors
+
+        specs, save_path = tiers_for_clock_anchors(session.results_dir)
+        self._open_editor_with(
+            session,
+            None,
+            specs,
+            save_path,
+            f"{session.subject} · clock drift — drag anchors onto the true stimulus",
+        )
+
+    def _open_editor_with(self, session, step, specs, save_path, title) -> None:
         # Show the popup right away: the first open imports + builds the (heavy) editor, then
         # renders the audio — so there's feedback during that work, not a frozen, blank wait.
         self._loading = LoadingDialog("Loading editor…", self)
@@ -86,9 +110,8 @@ class MainWindow(QMainWindow):
         QApplication.processEvents()  # paint the popup before the blocking import/build below
 
         editor = self._ensure_editor()
-        self._editing = (session, step)
-        specs, save_path = tiers_for_step(session.results_dir, step)
-        editor.setWindowTitle(f"{session.subject} · {step.value} — Annotation Editor")
+        self._editing = (session, step)  # step None = clock-anchor mode (no step recorded on save)
+        editor.setWindowTitle(title)
         editor.set_tiers(specs)
         editor.set_response_tags(response_tags(session.task))  # per-task quick-tag palette
         editor.configure_save(save_path)
@@ -157,7 +180,8 @@ class MainWindow(QMainWindow):
         if self._editing is None:
             return
         session, step = self._editing
-        session.record_done(step)
+        if step is not None:  # clock-anchor mode (step None) just persists clock_anchors.txt
+            session.record_done(step)
         self._dashboard.refresh()
 
     def _on_denoised(self) -> None:

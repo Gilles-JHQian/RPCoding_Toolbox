@@ -41,6 +41,7 @@ from rpcoding.gui.workers.worker import run_in_thread
 
 class Dashboard(QWidget):
     open_editor = Signal(object, object)  # (SubjectSession, Step)
+    open_clock_editor = Signal(object)  # (SubjectSession) — clock-drift anchor marking
     theme_toggle_requested = Signal()
     # Step progress relayed from the worker thread; a Dashboard signal -> Dashboard slot is a queued
     # (cross-thread) connection, so the row update runs safely on the GUI thread.
@@ -743,9 +744,23 @@ class Dashboard(QWidget):
 
     def _open_settings(self) -> None:
         dialog = SettingsDialog(self._config, self._theme, self)
-        if dialog.exec() != SettingsDialog.DialogCode.Accepted:
+        code = dialog.exec()
+        if code == SettingsDialog.FIX_CLOCK:
+            self._launch_clock_fix()
+            return
+        if code != SettingsDialog.DialogCode.Accepted:
             return
         self.set_config(dialog.result_config())
+
+    def _launch_clock_fix(self) -> None:
+        """Settings → Anomaly handling → Fix clock drift: pick a subject, open the anchor editor."""
+        from rpcoding.gui.clock_fix import ClockFixDialog
+
+        picker = ClockFixDialog(self._config, default_task=self.current_task, parent=self)
+        if picker.exec() != ClockFixDialog.DialogCode.Accepted:
+            return
+        session = SubjectSession(self._config, picker.task, picker.subject)
+        self.open_clock_editor.emit(session)
 
     def set_config(self, config: AppConfig) -> None:
         """Apply and persist a new config; rebuild the current session against it."""

@@ -9,6 +9,7 @@ pytest.importorskip("PySide6")
 from rpcoding.core.config import AppConfig
 from rpcoding.core.tasks import Task
 from rpcoding.gui.batch_dialog import BatchDialog
+from rpcoding.gui.clock_fix import ClockFixDialog
 from rpcoding.gui.settings_dialog import SettingsDialog
 
 
@@ -50,6 +51,24 @@ def test_settings_dialog_has_mfa_panel(qtbot, tmp_path):
     qtbot.addWidget(dlg)
     assert dlg._mfa_install_btn.text() in ("Download & install models", "Re-install / repair")
     assert dlg._mfa_status_lay.count() >= 4  # one status row per probed item
+
+
+def test_settings_fix_clock_returns_custom_code(qtbot, tmp_path):
+    dlg = SettingsDialog(AppConfig(droot=tmp_path))
+    qtbot.addWidget(dlg)
+    dlg.done(SettingsDialog.FIX_CLOCK)  # what the "Fix clock drift" button does
+    assert dlg.result() == SettingsDialog.FIX_CLOCK == 2
+
+
+def test_clock_fix_dialog_lists_subjects(qtbot, tmp_path):
+    # two UP subjects on disk -> the picker should offer them for the UP task
+    for s in ("D28", "D42"):
+        (tmp_path / "D_Data" / "Uniqueness_Point" / s).mkdir(parents=True)
+    dlg = ClockFixDialog(AppConfig(droot=tmp_path), default_task=Task.UNIQUENESS_POINT)
+    qtbot.addWidget(dlg)
+    assert dlg.task == Task.UNIQUENESS_POINT
+    assert {dlg._subject.itemText(i) for i in range(dlg._subject.count())} == {"D28", "D42"}
+    assert dlg.subject in ("D28", "D42")
 
 
 def test_settings_editor_audio_choice_roundtrip(qtbot, tmp_path):

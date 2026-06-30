@@ -65,6 +65,9 @@ class _PathField(QWidget):
 
 
 class SettingsDialog(QDialog):
+    # exec() result code meaning "the user clicked Fix clock drift" (vs Accepted=1 / Rejected=0).
+    FIX_CLOCK = 2
+
     def __init__(self, config: AppConfig, theme: Theme | None = None, parent=None):
         super().__init__(parent)
         self._theme = theme or DARK_THEME
@@ -108,6 +111,8 @@ class SettingsDialog(QDialog):
         outer.addWidget(self._build_mfa_group())
         self._use_processed.setChecked(config.editor_use_processed_audio)
 
+        outer.addWidget(self._build_anomaly_group())
+
         self._buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
@@ -148,6 +153,23 @@ class SettingsDialog(QDialog):
             "Off (default): the editor loads the original; on: it loads the denoised audio."
         )
         gl.addWidget(self._use_processed)
+        return group
+
+    # ---- anomaly handling section ----
+    def _build_anomaly_group(self) -> QGroupBox:
+        group = QGroupBox("异常处理 · Anomaly handling")
+        gl = QVBoxLayout(group)
+        gl.addWidget(QLabel("Tools for subjects whose upstream data needs manual correction."))
+        row = QHBoxLayout()
+        btn = QPushButton("修复时钟差异 · Fix clock drift…")
+        btn.setToolTip(
+            "Mark each block's true first/last stimulus position on the audio; the tool fits the\n"
+            "EDF-trigger vs allblocks.wav clock drift and corrects the cue/condition events."
+        )
+        btn.clicked.connect(lambda: self.done(self.FIX_CLOCK))
+        row.addWidget(btn)
+        row.addStretch(1)
+        gl.addLayout(row)
         return group
 
     def _render_mfa_status(self):
