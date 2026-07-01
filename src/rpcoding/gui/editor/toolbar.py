@@ -1,7 +1,8 @@
 """Editor toolbar: transport, label ops, selection readout, playback volume, theme toggle.
 
-Amplitude lives in the waveform header now (＋/－); this bar keeps the playback volume slider plus a
-non-modal build-progress strip.
+Amplitude lives in the waveform header now (＋/－); this bar keeps the playback volume slider (0–10×)
+with an editable multiplier box beside it (up to 100× for very quiet audio) plus a non-modal
+build-progress strip.
 """
 
 from __future__ import annotations
@@ -17,6 +18,10 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSlider,
 )
+
+# The slider spans 0–10x (fine control); the editable box can go higher for very quiet audio.
+_SLIDER_MAX_VOL = 10.0
+_MAX_VOL = 100.0
 
 
 class EditorToolbar(QFrame):
@@ -123,16 +128,22 @@ class EditorToolbar(QFrame):
         lay.addWidget(self._sep())
         lay.addWidget(QLabel("Vol"))
         self._vol = QSlider(Qt.Orientation.Horizontal)
-        self._vol.setRange(0, 1000)  # 0x .. 10x playback gain (quiet recordings need a lot)
+        self._vol.setRange(0, int(_SLIDER_MAX_VOL * 100))  # 0x .. 10x (value / 100)
         self._vol.setValue(100)
         self._vol.setFixedWidth(96)
-        self._vol.setToolTip("Playback volume (up to 10x)")
+        self._vol.setToolTip("Playback volume (slider 0–10×; type a higher × in the box)")
         self._vol.valueChanged.connect(self._on_vol_changed)
         lay.addWidget(self._vol)
-        self._vol_val = QLabel("1.0×")
-        self._vol_val.setObjectName("Meta")
-        self._vol_val.setFixedWidth(34)
-        lay.addWidget(self._vol_val)
+        # Editable multiplier: the slider caps at 10×, but very quiet recordings need more, so this
+        # box accepts up to _MAX_VOL× (playback clips at ±1, so it just gets loud).
+        self._vol_field = QLineEdit("1.0")
+        self._vol_field.setObjectName("Mono")
+        self._vol_field.setFixedWidth(46)
+        self._vol_field.setValidator(QDoubleValidator(0.0, _MAX_VOL, 2, self._vol_field))
+        self._vol_field.setToolTip(f"Type a playback multiplier (up to {_MAX_VOL:g}×)")
+        self._vol_field.editingFinished.connect(self._on_vol_field_edited)
+        lay.addWidget(self._vol_field)
+        lay.addWidget(QLabel("×"))
 
         self._save = QPushButton("💾 Save")
         self._save.setObjectName("Primary")
@@ -229,8 +240,23 @@ class EditorToolbar(QFrame):
         self._theme.setText("◑ Light" if name == "dark" else "◑ Dark")
 
     def _on_vol_changed(self, v: int) -> None:
-        self.volume_changed.emit(v / 100.0)
-        self._vol_val.setText(f"{v / 100:.1f}×")
+        gain = v / 100.0
+        self.volume_changed.emit(gain)
+        if not self._vol_field.hasFocus():  # don't clobber a value being typed
+            self._vol_field.setText(f"{gain:.1f}")
+
+    def _on_vol_field_edited(self) -> None:
+        try:
+            gain = float(self._vol_field.text())
+        except ValueError:
+            gain = self._vol.value() / 100.0  # revert to the slider on unparseable input
+        gain = max(0.0, min(_MAX_VOL, gain))
+        self.volume_changed.emit(gain)
+        # Reflect on the slider (which only spans 0–10×) without re-emitting the clamped value.
+        self._vol.blockSignals(True)
+        self._vol.setValue(int(round(min(gain, _SLIDER_MAX_VOL) * 100)))
+        self._vol.blockSignals(False)
+        self._vol_field.setText(f"{gain:.1f}")
 
     def set_selection_text(self, span, is_label: bool = False) -> None:
         # ``is_label`` retitles the readout to "label" so the start/end/length refer to the selected
