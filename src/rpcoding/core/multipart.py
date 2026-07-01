@@ -23,6 +23,8 @@ from pathlib import Path
 import numpy as np
 import scipy.io as sio
 
+from rpcoding.core.matio import save_mat
+
 _PART_RE = re.compile(r"^(?P<base>[A-Za-z_]+?)(?P<num>\d+)\.mat$", re.IGNORECASE)
 
 
@@ -71,7 +73,7 @@ def _merge(directory: Path | str, base: str, var: str, *, concat: bool) -> Merge
             combined = np.concatenate([_load_var(p, var) for p in parts], axis=1)
         except (TypeError, ValueError) as exc:  # mismatched struct fields across parts
             raise ValueError(f"cannot concatenate {base} parts (differing fields?): {exc}") from exc
-        sio.savemat(str(out), {var: combined})
+        save_mat(out, {var: combined})  # compressed, like MATLAB — uncompressed bloats ~30x
         n = combined.shape[1]
         detail = f"{n} rows from {', '.join(p.name for p in parts)}"
     else:
