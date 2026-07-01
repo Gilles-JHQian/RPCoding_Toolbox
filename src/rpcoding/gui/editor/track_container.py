@@ -11,7 +11,14 @@ from pathlib import Path
 import pyqtgraph as pg
 from PySide6.QtCore import QEvent, QPointF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLineEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLineEdit,
+    QMessageBox,
+    QVBoxLayout,
+    QWidget,
+)
 
 from rpcoding.core.audio.denoise import denoise_allblocks
 from rpcoding.core.audio.io import duration_seconds
@@ -129,6 +136,7 @@ class AudioEditor(QWidget):
         self._clipboard: Interval | None = None
         self._undo_stack: list[list[Interval]] = []  # snapshots of the editable tier
         self._undo_idx = 0
+        self._saved_snapshot: list[Interval] = []  # editable tier as last saved (dirty check)
         self._restoring = False
         self._cursor: float | None = None
         self._wav_path: Path | None = None
@@ -489,6 +497,7 @@ class AudioEditor(QWidget):
             self._trial_index = TrialIndex(by_name[cue_name], by_name.get(condition_name))
         self._undo_stack = [self._snapshot()]  # baseline state for undo
         self._undo_idx = 0
+        self._saved_snapshot = self._snapshot()  # freshly loaded == saved (nothing unsaved yet)
         self._clipboard = None
 
     # ---- saving ----
@@ -501,8 +510,15 @@ class AudioEditor(QWidget):
         if self._save_path is None or self._editable_lane is None:
             return
         write_tier(self._editable_lane.get_tier(), self._save_path)
+        self._saved_snapshot = self._snapshot()  # current state is now on disk -> no longer dirty
         self._toolbar.set_status(f"Saved → {self._save_path.name}")
         self.saved.emit()
+
+    def is_dirty(self) -> bool:
+        """Whether the editable tier has unsaved edits (differs from its last-saved state)."""
+        if self._save_path is None or self._editable_lane is None:
+            return False
+        return self._snapshot() != self._saved_snapshot
 
     def set_theme(self, theme: Theme) -> None:
         self._theme = theme
@@ -570,7 +586,32 @@ class AudioEditor(QWidget):
     def clear(self) -> None:
         self.spectrogram.close_source()
 
+    def _confirm_discard_or_save(self) -> bool:
+        """If there are unsaved edits, ask Save / Discard / Cancel. Returns True if it's OK to close
+        (saved or discarded), False to stay open (Cancel)."""
+        if not self.is_dirty():
+            return True
+        name = self._save_path.name if self._save_path else "the labels"
+        reply = QMessageBox.question(
+            self,
+            "Unsaved changes",
+            f"Save changes to {name} before closing?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Save,
+        )
+        if reply == QMessageBox.StandardButton.Cancel:
+            return False
+        if reply == QMessageBox.StandardButton.Save:
+            self.save()
+        return True
+
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
+        # Prompt to save on any exit (Esc calls self.close(); so does the window close button).
+        if not self._confirm_discard_or_save():
+            event.ignore()
+            return
         self._player.stop()  # don't keep playing audio after the editor window closes
         super().closeEvent(event)
 

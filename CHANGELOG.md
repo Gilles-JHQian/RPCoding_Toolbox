@@ -6,6 +6,16 @@ in development); entries are grouped by the feature branch that delivered them, 
 
 ## [Unreleased]
 
+### Editor prompts to save unsaved edits on exit (`feat/editor-save-on-exit-prompt`)
+
+- **Leaving the editor with Esc (or Back, or the window close) silently discarded unsaved edits.**
+  The editor now tracks a dirty state (the editable tier vs its last-saved snapshot) and, on any
+  exit, if there are unsaved changes, asks **Save / Discard / Cancel** — Save writes and closes,
+  Discard closes, Cancel keeps the editor open. Esc and the window close button already went through
+  `closeEvent`; the Back button now routes through `close()` too, so all three prompt. Closing the
+  app with an unsaved editor prompts as well, and Cancel there aborts the app close.
+  (`AudioEditor.is_dirty` / `_confirm_discard_or_save` / `closeEvent`; `MainWindow._close_editor`.)
+
 ### make-events re-applies a saved clock-drift fit (`feat/make-events-reapplies-clock-fit`)
 
 - **Re-running "Generate Cue and Condition Events" silently wiped a clock-drift correction.**
