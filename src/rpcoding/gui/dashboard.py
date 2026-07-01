@@ -751,6 +751,9 @@ class Dashboard(QWidget):
         if code == SettingsDialog.MERGE_MULTIPART:
             self._launch_merge_multipart()
             return
+        if code == SettingsDialog.FIX_TRIGGER:
+            self._launch_trigger_fix()
+            return
         if code != SettingsDialog.DialogCode.Accepted:
             return
         self.set_config(dialog.result_config())
@@ -773,6 +776,18 @@ class Dashboard(QWidget):
             self._config,
             default_task=self.current_task,
             default_subject=self._subjects.current_subject(),
+            parent=self,
+        ).exec()
+
+    def _launch_trigger_fix(self) -> None:
+        """Anomaly handling → Fix trigger misalignment: re-derive triggers vs trialInfo."""
+        from rpcoding.gui.trigger_fix import TriggerFixDialog
+
+        TriggerFixDialog(
+            self._config,
+            default_task=self.current_task,
+            default_subject=self._subjects.current_subject(),
+            theme=self._theme,
             parent=self,
         ).exec()
 

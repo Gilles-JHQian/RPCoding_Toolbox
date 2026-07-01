@@ -6,6 +6,37 @@ in development); entries are grouped by the feature branch that delivered them, 
 
 ## [Unreleased]
 
+### Trigger-misalignment fix gadget (`feat/trigger-fix-algorithm`, `feat/trigger-fix-gui`)
+
+- **The problem.** On some subjects (e.g. D90) `Trials.Auditory` is off by a *mis-counted trigger*:
+  the manual `maketrigtimes` step dropped or double-counted a TTL pulse (a stray not zeroed, a missing
+  pulse, or the double-trigger `trigTimes(1:2:end)` halving off by one), and because
+  `ecog_preprocessing` consumes `trigTimes` with a single sequential cursor, one bad pulse shifts
+  every later trial — a block-level **step** baked into `Trials.Auditory`, and from there into
+  `cue_events`. This is distinct from the clock-drift fix: that corrects a smooth EDF-vs-audio *rate*
+  drift on already-correct triggers; this repairs a trigger *count* error.
+- **The idea.** The two ground truths survive the damage — the raw `trigger.mat` waveform (all real
+  pulses still in it) and `trialInfo` (the experiment computer's authoritative per-trial timing). So
+  re-detect the pulses and use trialInfo's stimulus-time pattern as a template to snap each trial back
+  onto its own true pulse.
+- **Algorithm (`core/trigger_fix.py`).** `detect_pulses` (adjustable threshold + noise-zeroing — the
+  one genuinely per-subject step, mirroring `maketrigtimes`). `align_to_trialinfo` anchors once on the
+  full-length template by **minimizing fit tightness** (tol-capped total distance), which locks onto
+  the *stimulus* pulses rather than the *cue* pulses of the double trigger (both give a full template
+  match, but cue pulses sit a variable ~2 s ahead of `stimulusAudioStart` so they fit loosely), then
+  a **drift-tolerant sequential snap** re-anchors each trial and interpolates a missing pulse.
+  `apply_trigger_fix` writes a corrected `Trials.mat` to the results dir and regenerates the
+  cue/condition events; `is_improvement` guards the already-clean / irregular case so a clean file is
+  never degraded. `resolve_trials_mat` now prefers a results-dir `Trials.mat` (the tool's own combine
+  or a correction gadget's output) over the D_Data copy, so downstream steps read the corrected file.
+- **Validated on real data.** D90 (broken block 1) `2281 ms → 7 ms` residual, aligned; D139 (already
+  clean) reproduces the lab's answer (`18 ms → 4 ms`); D86 (irregular 851-pulse structure) is left
+  untouched by the improvement guard.
+- **UI (Settings → 异常处理 · Anomaly handling → 修复触发错位 · Fix trigger misalignment…).** Pick a
+  task/subject, **Analyze** (loads the trigger once, then a threshold slider re-detects/re-aligns
+  live), review the detected pulses + recovered trial grid over the max-pooled waveform and the
+  before/after per-block residual, then **Apply**. (`gui/trigger_fix.TriggerFixDialog`.)
+
 ### Merge multi-part recordings (`feat/multipart-merge`)
 
 - **Subjects recorded in more than one part** (e.g. No-Delay D147: `Trials1.mat` + `Trials2.mat`,
