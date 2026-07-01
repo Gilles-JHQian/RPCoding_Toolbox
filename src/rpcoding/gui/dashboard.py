@@ -748,6 +748,9 @@ class Dashboard(QWidget):
         if code == SettingsDialog.FIX_CLOCK:
             self._launch_clock_fix()
             return
+        if code == SettingsDialog.MERGE_MULTIPART:
+            self._launch_merge_multipart()
+            return
         if code != SettingsDialog.DialogCode.Accepted:
             return
         self.set_config(dialog.result_config())
@@ -761,6 +764,17 @@ class Dashboard(QWidget):
             return
         session = SubjectSession(self._config, picker.task, picker.subject)
         self.open_clock_editor.emit(session)
+
+    def _launch_merge_multipart(self) -> None:
+        """Settings → Anomaly handling → Merge multi-part files: combine numbered D_Data parts."""
+        from rpcoding.gui.multipart_merge import MergeMultipartDialog
+
+        MergeMultipartDialog(
+            self._config,
+            default_task=self.current_task,
+            default_subject=self._subjects.current_subject(),
+            parent=self,
+        ).exec()
 
     def set_config(self, config: AppConfig) -> None:
         """Apply and persist a new config; rebuild the current session against it."""
