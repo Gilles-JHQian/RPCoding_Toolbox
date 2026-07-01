@@ -291,6 +291,26 @@ def test_volume_sets_player_gain(qtbot):
     assert ed._player._volume == 1.5
 
 
+def test_volume_field_allows_beyond_slider_cap(qtbot):
+    ed = AudioEditor(DARK_THEME)
+    qtbot.addWidget(ed)
+    tb = ed._toolbar
+    # Type a multiplier above the slider's 10x cap -> applied to playback; slider clamps to its max.
+    tb._vol_field.setText("25")
+    tb._on_vol_field_edited()
+    assert ed._player._volume == 25.0
+    assert tb._vol.value() == 1000  # slider maxes at 10x (value/100)
+    assert tb._vol_field.text() == "25.0"
+    # Out-of-range input is clamped to the field max.
+    tb._vol_field.setText("999")
+    tb._on_vol_field_edited()
+    assert ed._player._volume == 100.0
+    # The slider still drives volume in 0..10x and writes the value back into the field.
+    tb._vol.setValue(350)
+    assert ed._player._volume == 3.5
+    assert tb._vol_field.text() == "3.5"
+
+
 def test_playhead_tracks_cursor_and_lands_on_stop(qtbot):
     ed = AudioEditor(DARK_THEME)
     qtbot.addWidget(ed)

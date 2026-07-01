@@ -287,6 +287,13 @@ UP (downstream `rpcode2trials` / word-lists are still lexical-only and come late
   our `.mat` files ~20-40× larger than the MATLAB pipeline's (e.g. a 504-trial `Trials_org` was 359 KB
   vs MATLAB's ~18 KB; now ~10 KB). Lossless — `loadmat` decompresses transparently.
 
+### Editor — type a playback multiplier past 10× (`feat/volume-manual-input`)
+
+- The playback-volume control gained an **editable multiplier box** beside the slider. The slider
+  still gives fine 0–10× control, but very quiet recordings can now be boosted by typing a value up
+  to 100× (playback clips at ±1, so it just gets loud). Typing a value >10× applies it and parks the
+  slider at its 10× max; nudging the slider then takes over again within 0–10×.
+
 ### Word/Nonword lists — Uniqueness Point integration (`feat/wordlists-uniqueness-point`)
 
 - **The default Word/Nonword lists now cover Uniqueness Point, not just Lexical.** `rpcode2trials`
