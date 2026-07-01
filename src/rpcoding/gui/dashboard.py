@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QUrl, Signal
@@ -37,6 +38,18 @@ from rpcoding.gui.theme import Theme
 from rpcoding.gui.widgets.step_row import StepRow
 from rpcoding.gui.widgets.subject_list import SubjectList
 from rpcoding.gui.workers.worker import run_in_thread
+
+
+def _fmt_ran_at(iso: str) -> str:
+    """A manifest ISO timestamp shown in the system's local time. Older runs stored UTC and newer
+    ones store local; a tz-aware value is converted, a naive one is shown as-is."""
+    try:
+        dt = datetime.fromisoformat(iso)
+    except (ValueError, TypeError):
+        return iso[:16].replace("T", " ")
+    if dt.tzinfo is not None:
+        dt = dt.astimezone()  # -> local
+    return dt.strftime("%Y-%m-%d %H:%M")
 
 
 class Dashboard(QWidget):
@@ -647,11 +660,11 @@ class Dashboard(QWidget):
         if rec is not None and rec.state == "error":
             return "error — click the chip for details"
         if self._step_log_path(step) is not None:
-            return (f"ran {rec.ran_at[:16].replace('T', ' ')} · " if rec and rec.ran_at else "") + (
+            return (f"ran {_fmt_ran_at(rec.ran_at)} · " if rec and rec.ran_at else "") + (
                 "click the chip for the run log"
             )
         if rec is not None and rec.ran_at:
-            return f"ran {rec.ran_at[:16].replace('T', ' ')}"
+            return f"ran {_fmt_ran_at(rec.ran_at)}"
         return ""
 
     def _on_step_action(self, step: Step) -> None:

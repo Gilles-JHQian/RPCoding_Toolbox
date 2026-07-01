@@ -6,6 +6,13 @@ in development); entries are grouped by the feature branch that delivered them, 
 
 ## [Unreleased]
 
+### Manifest timestamps in local time (`fix/manifest-local-time`)
+
+- **Step run-times were recorded and shown in UTC**, so the dashboard's "ran …" times were 4–5 h
+  off the system clock. `session._now()` now stores local, tz-aware timestamps
+  (`datetime.now().astimezone()`), and the dashboard converts any timestamp to local before showing
+  it (`_fmt_ran_at`) — so older manifests that stored UTC also display correctly.
+
 ### Response placeholders for MFA-dropped Repeat trials (`feat/response-omitted-placeholders`)
 
 - **Write-Trials failed for UP subjects with "response count < Repeat count".** MFA writes one

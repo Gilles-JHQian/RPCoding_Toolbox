@@ -523,6 +523,16 @@ def test_run_step_records_error(tmp_path):
     assert s.effective_state(Step.CONCAT_WAVS) == EffectiveState.ERROR
 
 
+def test_now_is_local_timezone_aware():
+    from datetime import datetime
+
+    from rpcoding.core.session import _now
+
+    dt = datetime.fromisoformat(_now())
+    assert dt.tzinfo is not None  # tz-aware, not a bare UTC/naive string
+    assert dt.utcoffset() == datetime.now().astimezone().utcoffset()  # the system's local offset
+
+
 # ---- CLI ----
 
 

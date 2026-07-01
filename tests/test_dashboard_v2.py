@@ -15,7 +15,7 @@ from rpcoding.core.config import AppConfig
 from rpcoding.core.session import SubjectSession
 from rpcoding.core.steps import EffectiveState, Step
 from rpcoding.core.tasks import Task
-from rpcoding.gui.dashboard import Dashboard
+from rpcoding.gui.dashboard import Dashboard, _fmt_ran_at
 from rpcoding.gui.theme import DARK_THEME
 from rpcoding.gui.widgets.state_chip import StateChip
 from rpcoding.gui.widgets.state_dot import StateDot
@@ -86,6 +86,17 @@ def test_subject_list_summary_and_select(qtbot):
     sl.subject_selected.connect(got.append)
     sl._rows["D2"].clicked.emit()
     assert got == ["D2"]
+
+
+def test_fmt_ran_at_shows_local_time():
+    from datetime import datetime
+
+    # a UTC manifest timestamp (older runs) is converted to the system's local time
+    iso = "2026-07-01T21:27:20.921307+00:00"
+    assert _fmt_ran_at(iso) == datetime.fromisoformat(iso).astimezone().strftime("%Y-%m-%d %H:%M")
+    # a naive timestamp is shown as-is; garbage falls back to a plain slice
+    assert _fmt_ran_at("2026-07-01T17:27:00") == "2026-07-01 17:27"
+    assert _fmt_ran_at("nonsense") == "nonsense"
 
 
 def _make_subject_dir(tmp_path, task, subject):
