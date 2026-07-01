@@ -19,6 +19,56 @@ in development); entries are grouped by the feature branch that delivered them, 
   Anomaly handling → Merge multi-part files…**: pick a task/subject (defaults to the current one)
   and merge. Verified on D147 (252 + 252 → 504, experiment byte-identical to part 1).
 
+### Clock-drift fix gadget (`feat/clock-fix-marking`, `feat/clock-fix-algorithm`)
+
+- **The problem.** On early subjects the cue (stimulus) annotation slips progressively later through
+  each block and resets at the block boundary: the EDF/amplifier clock (`Trials.Auditory`, 2048 Hz)
+  drifts from the audio-interface clock (`allblocks.wav`, 20 kHz), and `cue_events` mixes the two
+  (a `first_stims` audio anchor + EDF-elapsed). The lab already knew this
+  (`bsliang_test_Auditoryonset_errors.m`: *"lags tended to gradually be bigger as time grows within
+  a block"*, early patients <60 for No-Delay) and fixed it by hand-adjusting `cue_events`; this
+  gadget automates it. (Verified from the EDF: `trigTimes_audioAligned − trigTimes` is a *constant*
+  latency, so the trigger grid is accurate and only the EDF↔audio rate needs fixing.)
+- **Marking (Settings → 异常处理 · Anomaly handling → 修复时钟差异 · Fix clock drift…).** Pick a
+  task/subject; the editor opens `allblocks.wav` with an editable `clock_anchors` lane pre-seeded
+  with one draggable anchor at each block's first and last trial (labelled by trial number, sitting
+  at the drifted cue position). Drag each onto the true stimulus; add anchors on anomalous trials.
+  Saved as `clock_anchors.txt`. (`gui/editor_loader.tiers_for_clock_anchors`,
+  `gui/clock_fix.ClockFixDialog`; opens the editor in a step-less "clock-anchor" mode.)
+- **Correction (`core/clock_fix.py`).** From the anchors + `Trials.Auditory`, each block's
+  EDF-elapsed is re-mapped onto the true audio timeline by **piecewise-linear interpolation through
+  the anchors** — exact with a start+end anchor, bending at extra (anomaly) anchors, so a non-linear
+  block is handled. A block with <2 anchors is left unchanged. `cue_events` is rewritten onto the
+  true positions; `condition_events` is shifted by each trial's same correction; originals are backed
+  up once to `*.before_clock_fix.txt`. On save the editor offers to apply it and reports the
+  per-block end-shift and rate (ppm). The neural-cutting times in the enriched `Trials.mat` stay
+  EDF-anchored (`Trials.Auditory` + short per-trial intervals), so this correction is audio-domain
+  only (coding + MFA windowing) and doesn't skew epoched neural data.
+
+### Multi-session / multi-day subjects (`feat/multi-session-subjects`)
+
+- **Blocks split across session folders + no combined `Trials.mat`.** A subject run across two EDF
+  sessions/days splits its per-block TrialData/wavs over two timestamped session folders (e.g.
+  No-Delay **D133**: blocks 1-2 in one, 3-4 in another) and has only per-session
+  `Trials1.mat`/`Trials2.mat`. `resolve_blocks_dir` returned a single folder, so trialInfo build +
+  wav concat only saw one session. New **`paths.resolve_block_dirs`** returns *all* the task's
+  session folders; `discover_trialdata_files` / `discover_block_wavs` now aggregate across them (a
+  block present in two sessions resolves to the most-complete / latest run). **`core/trials_combine.py`**
+  (`resolve_trials_mat`) uses an existing combined `Trials.mat`, else **auto-combines the per-session
+  `Trials<N>.mat`** — renumbering `Trial` to a continuous 1..N (byte-matches the lab's hand-combined
+  D133) — into the *results* dir (never the shared D_Data). The runner's event/write steps use this
+  tolerant lookup (also fixing a latent `find_trials_mat` WinError-1006 crash on Box placeholders),
+  and a ⚠ advisory (run log + status bar, persisted in the manifest) fires whenever a combine
+  happens. Verified end-to-end: D147 (never hand-combined → 504 trials, 13 ms aligned) and D133.
+  (Complements the manual `feat/multipart-merge` button, which pre-writes a combined `Trials.mat`
+  into D_Data; `resolve_trials_mat` then just uses it.)
+- **Uniqueness-Point Trials.mat health checks.** Two read-only diagnostics (never touch the dataset):
+  `scripts/up_trials_healthcheck.py` (self-contained geometry check per downloaded `Trials.mat` —
+  length, monotonic `Auditory`, `Start→Auditory` interval, block-boundary alignment vs 120/240/360)
+  and `scripts/up_trialinfo_xcheck.py` (the authoritative §2.6 cross-check — per-trial
+  `Trials.Auditory` vs `trialInfo.stimulusAudioStart`, pinpointing the exact trial where a block goes
+  off). Flagged D86/D90/D84/D139/D121 as misaligned (D139 only via the trialInfo cross-check).
+
 ### Backend — pipeline core (golden-file verified)
 
 - **Scaffolding & environment** (`feat/scaffolding`): src layout, `pyproject.toml`, cross-platform
