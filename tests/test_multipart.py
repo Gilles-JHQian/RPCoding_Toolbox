@@ -47,7 +47,10 @@ def test_merge_subject_concats_and_copies(tmp_path):
     assert results["trialInfo.mat"].status == "merged"
     assert results["experiment.mat"].status == "merged"
     # Trials / trialInfo concatenated to n1 + n2
-    assert sio.loadmat(str(subj / "230101" / "mat" / "Trials.mat"))["Trials"].shape[1] == 12
+    trials = sio.loadmat(str(subj / "230101" / "mat" / "Trials.mat"))["Trials"]
+    assert trials.shape[1] == 12
+    # Trials' Trial field renumbered to a continuous 1..N (each part started at 1); trialInfo isn't
+    assert [int(trials[0, i]["Trial"].squeeze()) for i in range(12)] == list(range(1, 13))
     assert sio.loadmat(str(subj / "230101" / "mat" / "trialInfo.mat"))["trialInfo"].shape[1] == 12
     # experiment copied byte-for-byte from part 1 (parts are content-identical)
     assert (subj / "mat" / "experiment.mat").read_bytes() == (

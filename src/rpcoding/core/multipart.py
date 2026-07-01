@@ -4,13 +4,16 @@ Some subjects are recorded in more than one part, so ``ecog_preprocessing.m`` wr
 ``Trials1.mat`` / ``Trials2.mat`` and ``trialInfo1.mat`` / ``trialInfo2.mat`` (under
 ``<subject>/<date>/mat/``) plus ``experiment1.mat`` / ``experiment2.mat`` (under ``<subject>/mat/``)
 and never a plain ``Trials.mat`` — so the response-coding pipeline (which needs exactly one
-``Trials.mat``) can't run. This merges them, matching the lab's ``combine_trialInfo.m`` convention:
+``Trials.mat``) can't run. This merges them:
 
-- **Trials / trialInfo**: the parts are concatenated in order (part 1 then part 2 …), à la
-  ``horzcat`` — trial numbers and each part's timestamps are left untouched (no renumbering).
+- **Trials**: concatenated in session order and the ``Trial`` field renumbered to a continuous
+  ``1..N`` (via :func:`rpcoding.core.trials_combine.combine_session_trials`), so the pipeline's own
+  auto-combine and this gadget produce the identical file. Matches the most recent same-task
+  hand-combine (D134); each part's timestamps are untouched (the pipeline realigns per trial).
+- **trialInfo**: plain ``horzcat`` concatenation, no renumbering (the lab's ``combine_trialInfo``).
 - **experiment**: the parts are content-identical (same electrodes/metadata), so the first is kept.
 
-Each merged file is written next to its parts; an existing merged file is never clobbered.
+Each merged file is written next to its parts in D_Data; an existing one is never clobbered.
 """
 
 from __future__ import annotations
@@ -23,7 +26,9 @@ from pathlib import Path
 import numpy as np
 import scipy.io as sio
 
-from rpcoding.core.matio import save_mat
+from rpcoding.core.matio import load_trials, save_mat
+from rpcoding.core.rpcode.rpcode2trials import save_trials
+from rpcoding.core.trials_combine import combine_session_trials
 
 _PART_RE = re.compile(r"^(?P<base>[A-Za-z_]+?)(?P<num>\d+)\.mat$", re.IGNORECASE)
 
@@ -57,7 +62,9 @@ def _load_var(path: Path, var: str) -> np.ndarray:
     return np.atleast_2d(raw[var])
 
 
-def _merge(directory: Path | str, base: str, var: str, *, concat: bool) -> MergeResult:
+def _merge(
+    directory: Path | str, base: str, var: str, *, concat: bool, renumber: bool = False
+) -> MergeResult:
     directory = Path(directory)
     out = directory / f"{base}.mat"
     parts = numbered_parts(directory, base)
@@ -67,8 +74,15 @@ def _merge(directory: Path | str, base: str, var: str, *, concat: bool) -> Merge
         return MergeResult(out.name, str(directory), "single_part", 1, f"only {parts[0].name}")
     if out.exists():
         return MergeResult(out.name, str(directory), "exists", len(parts), "kept existing file")
-    if concat:
-        # Trials (struct array) / trialInfo (cell array): concatenate 1xN parts along trial axis.
+    if concat and renumber:
+        # Trials: concat in session order + renumber Trial 1..N, identical to the pipeline's own
+        # auto-combine (trials_combine.combine_session_trials) so both entry points agree.
+        merged = combine_session_trials([load_trials(p) for p in parts])
+        save_trials(out, merged)  # compressed, via matio
+        n = len(merged)
+        detail = f"{n} trials (renumbered 1..N) from {', '.join(p.name for p in parts)}"
+    elif concat:
+        # trialInfo (cell array): plain horzcat of 1xN parts along the trial axis, no renumbering.
         try:
             combined = np.concatenate([_load_var(p, var) for p in parts], axis=1)
         except (TypeError, ValueError) as exc:  # mismatched struct fields across parts
@@ -99,7 +113,7 @@ def merge_subject(d_data_subject_dir: Path | str) -> list[MergeResult]:
         | {p.parent for p in base.glob("*/mat/trialInfo*.mat")}
     )
     for d in date_mat_dirs:
-        results.append(_merge(d, "Trials", "Trials", concat=True))
+        results.append(_merge(d, "Trials", "Trials", concat=True, renumber=True))
         results.append(_merge(d, "trialInfo", "trialInfo", concat=True))
     # experiment lives under <subject>/mat/.
     results.append(_merge(base / "mat", "experiment", "experiment", concat=False))

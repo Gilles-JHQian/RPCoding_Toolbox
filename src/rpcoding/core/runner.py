@@ -94,7 +94,7 @@ def _resolve_trials(s: SubjectSession, report: Reporter | None = None) -> Resolv
             s,
             report,
             f"Multi-session: auto-combined {len(resolved.sessions)} sessions into Trials.mat "
-            f"({resolved.n_trials} trials) in the results folder",
+            f"({resolved.n_trials} trials, renumbered 1..N) in D_Data",
         )
     elif resolved.multi_session:
         _warn_multi_session(
