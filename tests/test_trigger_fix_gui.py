@@ -76,7 +76,7 @@ def _make_subject(droot, task, subj, *, misalign=True):
         for i in range(len(audio))
     ]
     save_trials(d_dir / "Trials.mat", trials)
-    return results_dir, edf_stim
+    return results_dir, d_dir / "Trials.mat", edf_stim
 
 
 def test_settings_fix_trigger_returns_custom_code(qtbot, tmp_path):
@@ -98,7 +98,7 @@ def test_dialog_lists_subjects(qtbot, tmp_path):
 
 def test_analyze_then_apply_fixes_misalignment(qtbot, tmp_path, monkeypatch):
     task, subj = Task.LEXICAL_NODELAY, "D90"
-    results_dir, edf_stim = _make_subject(tmp_path, task, subj, misalign=True)
+    results_dir, trials_path, edf_stim = _make_subject(tmp_path, task, subj, misalign=True)
     dlg = TriggerFixDialog(AppConfig(droot=tmp_path), default_task=task, default_subject=subj)
     qtbot.addWidget(dlg)
 
@@ -109,6 +109,7 @@ def test_analyze_then_apply_fixes_misalignment(qtbot, tmp_path, monkeypatch):
     assert "MISALIGNED" not in dlg._out.toPlainText().splitlines()[-1]
 
     # exercise the real Apply button path with the confirm auto-accepted
+    from rpcoding.core.matio import load_trials
     from rpcoding.gui import trigger_fix as tf_mod
 
     monkeypatch.setattr(
@@ -117,8 +118,12 @@ def test_analyze_then_apply_fixes_misalignment(qtbot, tmp_path, monkeypatch):
     )
     dlg._do_apply()
     assert not dlg._apply.isEnabled()  # applied
-    assert (results_dir / paths.TRIALS_MAT).exists()
-    assert "wrote Trials.mat" in dlg._out.toPlainText()
+
+    # the correction lands in D_Data (in place), original backed up; results dir is NOT used
+    assert not (results_dir / paths.TRIALS_MAT).exists()
+    assert trials_path.with_name("Trials.mat.before_trigger_fix").exists()
+    fixed = np.array([float(t["Auditory"]) / 3e4 for t in load_trials(trials_path)])
+    assert fixed == pytest.approx(edf_stim, abs=0.05)  # D_Data Auditory now on the true grid
 
     # regenerated cue_events now line up (block-relative) with the true stimulus grid
     cue = [iv.start for iv in read_tier(results_dir / paths.CUE_EVENTS_TXT)]

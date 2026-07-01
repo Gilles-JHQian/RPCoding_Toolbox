@@ -90,25 +90,46 @@ def _block_index(trialinfo: list[dict]) -> np.ndarray:
     return np.array([int(round(float(trial_block(ti)))) for ti in trialinfo])
 
 
-def _anchor(pulses: np.ndarray, rel: np.ndarray, snap_tol: float) -> tuple[float, int]:
+def _cue_onsets(trialinfo: list[dict]) -> np.ndarray | None:
+    """Per-trial ``cueStart`` (experiment clock) for cue-vs-stimulus disambiguation, or ``None`` if
+    any trial lacks it (then anchoring falls back to stimulus-only)."""
+    if not all("cueStart" in ti for ti in trialinfo):
+        return None
+    return np.array([float(ti["cueStart"]) for ti in trialinfo])
+
+
+def _capped_dist(pulses: np.ndarray, exp: np.ndarray, snap_tol: float) -> np.ndarray:
+    """Per-element distance from each ``exp`` time to its nearest pulse, capped at ``snap_tol``."""
+    idx = np.clip(np.searchsorted(pulses, exp), 1, len(pulses) - 1)
+    d = np.minimum(np.abs(pulses[idx] - exp), np.abs(pulses[idx - 1] - exp))
+    return np.minimum(d, snap_tol)
+
+
+def _anchor(
+    pulses: np.ndarray, rel: np.ndarray, snap_tol: float, rel_cue: np.ndarray | None = None
+) -> tuple[float, int]:
     """The pulse to place trial 0's stimulus on: the one minimizing the total (tol-capped) distance
     from every ``a0 + rel`` (all trials' expected stimulus times) to its nearest pulse.
 
-    Minimizing *fit tightness* rather than a hit count is what picks the stimulus pulses over the
-    cue pulses: with a double trigger both give a full-length template match, but the cue pulses sit
-    a variable cue→stimulus gap ahead of ``stimulusAudioStart`` so they fit loosely, while the
-    stimulus pulses fit to detection precision. Capping each distance at ``snap_tol`` keeps strays /
-    missing pulses from dominating. A 500-point template is distinctive, so no per-block anchoring.
+    Minimizing *fit tightness* rather than a hit count picks the stimulus pulses over the cue
+    pulses: with a double trigger both give a full-length template match, but where the cue→stimulus
+    gap *varies* the cue pulses fit ``stimulusAudioStart`` loosely while the stimulus pulses fit to
+    detection precision. When the gap is (near-)constant that tie-break vanishes, so — given
+    ``rel_cue`` (each trial's cueStart relative to stimulus 0) — the cost also credits a pulse a gap
+    *ahead* of each candidate stimulus: only the true stimulus anchor has both its stimulus pulses
+    and their cue pulses, so it wins even with a fixed gap (and it's harmless for single-trigger
+    subjects — no cue pulses just adds a near-constant term). Capping at ``snap_tol`` keeps strays /
+    missing pulses from dominating; a 500-point template needs no per-block anchoring.
     """
     best_a0, best_cost, best_hits = float(pulses[0]), np.inf, 0
     for a0 in pulses:
-        exp = a0 + rel
-        idx = np.clip(np.searchsorted(pulses, exp), 1, len(pulses) - 1)
-        d = np.minimum(np.abs(pulses[idx] - exp), np.abs(pulses[idx - 1] - exp))
-        cost = float(np.minimum(d, snap_tol).sum())
+        ds = _capped_dist(pulses, a0 + rel, snap_tol)
+        cost = float(ds.sum())
+        if rel_cue is not None:
+            cost += float(_capped_dist(pulses, a0 + rel_cue, snap_tol).sum())
         if cost < best_cost:
             best_cost, best_a0 = cost, float(a0)
-            best_hits = int(np.count_nonzero(d < snap_tol))
+            best_hits = int(np.count_nonzero(ds < snap_tol))
     return best_a0, best_hits
 
 
@@ -196,17 +217,22 @@ def align_to_trialinfo(
     audio_onsets: np.ndarray,
     blocks: np.ndarray,
     snap_tol: float = DEFAULT_SNAP_TOL,
+    cue_onsets: np.ndarray | None = None,
 ) -> AlignResult:
     """Recover each trial's true stimulus-pulse EDF time from the detected pulses + trialInfo.
 
     ``audio_onsets`` are trialInfo's absolute stimulus times (experiment clock) and ``blocks`` the
-    per-trial block index. Anchors once on the full-length template, snaps sequentially, then scores
-    each block by the detrended residual of the corrected EDF time against trialInfo.
+    per-trial block index. ``cue_onsets`` (trialInfo ``cueStart``), when given, disambiguates the
+    stimulus pulses from the cue pulses of the double trigger even when the cue→stimulus gap is
+    constant. Anchors once on the full-length template, snaps sequentially, then scores each block
+    by the detrended residual of the corrected EDF time against trialInfo.
     """
     audio_onsets = np.asarray(audio_onsets, dtype=np.float64)
     blocks = np.asarray(blocks)
     rel = audio_onsets - audio_onsets[0]
-    a0, hits = _anchor(pulses, rel, snap_tol)
+    rel_cue = np.asarray(cue_onsets, dtype=np.float64) - audio_onsets[0] if cue_onsets is not None \
+        else None
+    a0, hits = _anchor(pulses, rel, snap_tol, rel_cue)
     corrected, matched = _snap(pulses, rel, a0, snap_tol)
     resids = _residuals(corrected, audio_onsets, blocks)
     for br in resids:
@@ -308,7 +334,7 @@ def preview_alignment(
     trigger = read_trigger(trig_path)
     level = thresh if thresh is not None else auto_threshold(trigger, thresh_frac)
     pulses = detect_pulses(trigger, freq, level, zero_regions=zero_regions)
-    align = align_to_trialinfo(pulses, audio, blocks, snap_tol)
+    align = align_to_trialinfo(pulses, audio, blocks, snap_tol, cue_onsets=_cue_onsets(trialinfo))
 
     before = None
     if trials_mat is not None:
@@ -333,14 +359,16 @@ def apply_trigger_fix(
     snap_tol: float = DEFAULT_SNAP_TOL,
     regenerate_events: bool = True,
 ) -> TriggerFixReport:
-    """Detect pulses, align to trialInfo, write a corrected ``Trials.mat`` to the results dir, and
-    (optionally) regenerate ``cue_events`` / ``condition_events`` from it.
+    """Detect pulses, align to trialInfo, write the corrected ``Auditory`` back into ``trials_mat``,
+    and (optionally) regenerate ``cue_events`` / ``condition_events`` from it.
 
-    The corrected ``Trials.mat`` lands in ``results_dir`` (never the shared D_Data dataset) and, via
-    :func:`rpcoding.core.trials_combine.resolve_trials_mat`'s results-dir precedence, is what
-    downstream steps then read. Requires ``trialInfo.mat`` (and, to regenerate events,
-    ``first_stims.txt``) to already exist in ``results_dir``. Raises ``ValueError`` on a
-    Trials/trialInfo length mismatch.
+    The correction is written **in place** at ``trials_mat`` (the canonical D_Data
+    ``<date>/mat/Trials.mat``), backing the original up to ``Trials.mat.before_trigger_fix`` once,
+    so the shared dataset the downstream events.tsv pipeline reads carries the fix. If write-Trials
+    already ran, its pristine source ``Trials_org.mat`` still holds the bad triggers, so it is
+    corrected too (else a re-run would restore them). Requires ``trialInfo.mat`` (and, to regenerate
+    events, ``first_stims.txt``) in ``results_dir``. Raises ``ValueError`` on a Trials/trialInfo
+    length mismatch.
     """
     results_dir = Path(results_dir)
     trialinfo = load_trialinfo(results_dir / paths.TRIALINFO_MAT)
@@ -359,13 +387,18 @@ def apply_trigger_fix(
     trigger = read_trigger(trig_path)
     level = thresh if thresh is not None else auto_threshold(trigger, thresh_frac)
     pulses = detect_pulses(trigger, freq, level, zero_regions=zero_regions)
-    align = align_to_trialinfo(pulses, audio, blocks, snap_tol)
+    align = align_to_trialinfo(pulses, audio, blocks, snap_tol, cue_onsets=_cue_onsets(trialinfo))
 
     cur = np.array([float(tr["Auditory"]) / EDF_RATE for tr in trials])
     before_max = max(b.residual_ms for b in _residuals(cur, audio, blocks))
 
-    out = results_dir / paths.TRIALS_MAT
+    out = Path(trials_mat)  # write the correction back into D_Data, in place (original backed up)
     _write_corrected_trials(trials, align.corrected_sec, out)
+    org = out.with_name("Trials_org.mat")  # write-Trials' pristine source, if it already ran
+    if org.exists():
+        org_trials = load_trials(org)
+        if len(org_trials) == len(align.corrected_sec):
+            _write_corrected_trials(org_trials, align.corrected_sec, org)
 
     regenerated = False
     if regenerate_events and (results_dir / paths.FIRST_STIMS_TXT).exists():

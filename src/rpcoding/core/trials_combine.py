@@ -97,15 +97,6 @@ def resolve_trials_mat(d_data_subject_dir: Path | str, results_dir: Path | str) 
     combined, sessions = _scan_trials_mats(base)
     session_paths = [p for _n, p in sessions]
 
-    # A corrected Trials.mat in the results dir wins over D_Data: the trigger-fix gadget writes its
-    # correction there (never onto the shared raw), so downstream reads the corrected one. The
-    # D_Data scan still runs so multi-session status is reported. A plain subject has no
-    # results/Trials.mat, so normal resolution is unaffected. (The auto-combine below writes to
-    # D_Data, not here.)
-    override = Path(results_dir) / COMBINED_NAME
-    if override.exists() and not any(override.samefile(p) for p in combined if p.exists()):
-        return ResolvedTrials(path=override, auto_combined=False, sessions=session_paths)
-
     if combined:
         # Prefer the canonical <date>/mat/Trials.mat; a stray copy elsewhere is ignored.
         canonical = [p for p in combined if paths._is_canonical_trials(p, base)]

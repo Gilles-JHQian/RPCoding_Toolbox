@@ -62,6 +62,22 @@ def test_align_locks_onto_stimulus_not_cue_pulses():
     assert np.allclose(res.corrected_sec, edf_stim, atol=1e-6)
 
 
+def test_align_constant_gap_uses_cue_to_pick_stimulus():
+    """With a *fixed* cue→stimulus gap, stimulus and cue pulses fit the template equally; cueStart
+    breaks the tie so we still lock onto the stimulus (not the cue) pulses."""
+    audio, blocks, edf_stim, _ = _double_trigger_case()
+    const_gap = 2.0
+    edf_cue = edf_stim - const_gap  # perfectly constant gap
+    cue_onsets = audio - const_gap  # trialInfo cueStart mirrors it
+    pulses = np.sort(np.concatenate([edf_cue, edf_stim]))
+    # stimulus-only anchoring is ambiguous here (would grab the earlier cue pulses)...
+    without_cue = align_to_trialinfo(pulses, audio, blocks, snap_tol=1.0)
+    assert np.allclose(without_cue.corrected_sec, edf_cue, atol=1e-6)
+    # ...but with cueStart it recovers the true stimulus pulses
+    with_cue = align_to_trialinfo(pulses, audio, blocks, snap_tol=1.0, cue_onsets=cue_onsets)
+    assert np.allclose(with_cue.corrected_sec, edf_stim, atol=1e-6)
+
+
 def test_align_interpolates_a_missing_stimulus_pulse():
     audio, blocks, edf_stim, edf_cue = _double_trigger_case()
     kept = np.delete(edf_stim, 3)  # trial 3's stimulus pulse is missing
