@@ -6,7 +6,19 @@ in development); entries are grouped by the feature branch that delivered them, 
 
 ## [Unreleased]
 
-### Multi-session combined Trials.mat written back to D_Data (`fix/multipart-trials-to-d-data`)
+### make-events re-applies a saved clock-drift fit (`feat/make-events-reapplies-clock-fit`)
+
+- **Re-running "Generate Cue and Condition Events" silently wiped a clock-drift correction.**
+  make-events regenerates `cue_events` / `condition_events` from the raw `Trials.Auditory`, so after
+  a subject's clock-drift fit had been applied (in the editor), any later events run overwrote it
+  with the drifted version — the fit (`clock_anchors.txt`) was saved but not re-applied. Now
+  `_make_events` calls `core.clock_fix.reapply_if_present` after writing the events: if the subject
+  has a saved `clock_anchors.txt`, the fit is re-applied automatically, so the correction "sticks"
+  across re-runs. It is **idempotent** (the corrected onsets are a pure function of the anchors +
+  `Auditory` + trialInfo, not of the current events) and best-effort (a fit that can't re-apply is
+  surfaced as a ⚠ warning, never a step failure). The trigger-fix's `Auditory` correction was
+  already sticky — it lives in `Trials.mat`, which make-events reads — so only the audio-domain
+  clock fit needed this.
 
 - **The combined multi-session `Trials.mat` now lands in D_Data**, next to the per-session parts
   (`<date>/mat/Trials.mat`), instead of the results folder — so a subject like D147 gets its
