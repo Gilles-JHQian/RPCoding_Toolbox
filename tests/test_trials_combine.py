@@ -63,7 +63,9 @@ def test_resolve_auto_combines_two_sessions(tmp_path):
     assert res.auto_combined is True
     assert res.multi_session is True
     assert res.n_trials == 5
-    assert res.path == results / "Trials.mat"
+    # written back into D_Data, next to the last session's per-part files (not the results dir)
+    assert res.path == dd / "230102" / "mat" / "Trials.mat"
+    assert not (results / "Trials.mat").exists()
     reloaded = load_trials(res.path)
     assert [int(t["Trial"]) for t in reloaded] == [1, 2, 3, 4, 5]  # renumbered across sessions
 

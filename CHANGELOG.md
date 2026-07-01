@@ -6,6 +6,21 @@ in development); entries are grouped by the feature branch that delivered them, 
 
 ## [Unreleased]
 
+### Multi-session combined Trials.mat written back to D_Data (`fix/multipart-trials-to-d-data`)
+
+- **The combined multi-session `Trials.mat` now lands in D_Data**, next to the per-session parts
+  (`<date>/mat/Trials.mat`), instead of the results folder — so a subject like D147 gets its
+  response-coded `Trials.mat` in the same place as a single-session subject (write-Trials enriches
+  it in place, with a `Trials_org.mat` backup). Previously `resolve_trials_mat` auto-combined into
+  the results dir, leaving D_Data with only the raw parts.
+- **Trial numbering unified to a continuous `1..N`.** The lab hand-combined multi-part subjects
+  inconsistently (some renumber, some don't); we standardize on renumbering, matching the most
+  recent same-task hand-combine (D134, NoDelay → 1..504). The pipeline auto-combine and the
+  Settings "merge multi-part" gadget now produce the identical file (the gadget's Trials merge
+  delegates to `combine_session_trials`); trialInfo is still plain `horzcat` (no renumber).
+- The trigger-fix gadget's corrected `Trials.mat` still lives in the results dir (a correction
+  never overwrites the shared raw) and still wins via `resolve_trials_mat`'s results-dir precedence.
+
 ### Manifest timestamps in local time (`fix/manifest-local-time`)
 
 - **Step run-times were recorded and shown in UTC**, so the dashboard's "ran …" times were 4–5 h

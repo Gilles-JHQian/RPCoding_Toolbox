@@ -2,14 +2,16 @@ r"""Resolve / auto-combine ``Trials.mat`` for multi-session subjects.
 
 A subject recorded across two EDF sessions has per-session ``Trials1.mat`` / ``Trials2.mat`` under
 ``D_Data/<task>/<subj>/<date>/mat/`` (the variable *inside* each is always ``Trials``, not
-``Trials<N>``). The lab's manual step concatenates them in session order and renumbers the ``Trial``
-field to a continuous ``1..N`` — validated to reproduce the hand-combined file exactly. This module
-does that automatically so the pipeline no longer needs a hand-made combined ``Trials.mat``.
+``Trials<N>``). The lab has no script for this — it was hand-combined per subject, inconsistently
+(some files renumber the ``Trial`` field 1..N, some keep each part's original numbering). We
+standardize on **renumbering to a continuous 1..N**, matching the most recent same-task hand-combine
+(D134, NoDelay) so downstream code can treat ``Trial`` as a unique index.
 
 Resolution policy (see memory: multi-session-support):
   * An existing combined ``Trials.mat`` (single session, or a hand-made combine) is used as-is.
-  * Otherwise, if ≥2 per-session ``Trials<N>.mat`` exist, they are combined and written to the
-    **results dir** (the tool's own output area — never the shared D_Data dataset).
+  * Otherwise, if ≥2 per-session ``Trials<N>.mat`` exist, they are combined and written back into
+    **D_Data**, next to the per-session files (``<date>/mat/Trials.mat``) — the lab's own layout, so
+    downstream steps enrich it in place (like a single-session subject).
   * A lone ``Trials1.mat`` (suffixed but single) is used directly.
 
 The walk tolerates Box cloud-placeholder ``OSError``s (which crash ``pathlib.glob``).
@@ -95,10 +97,11 @@ def resolve_trials_mat(d_data_subject_dir: Path | str, results_dir: Path | str) 
     combined, sessions = _scan_trials_mats(base)
     session_paths = [p for _n, p in sessions]
 
-    # The tool's own prepared/corrected Trials.mat in the results dir wins over D_Data: it is either
-    # this module's earlier auto-combine or a correction gadget's output (e.g. the trigger-fix). The
-    # D_Data scan still runs so multi-session status is reported. A plain single-session subject has
-    # no results/Trials.mat, so normal resolution is unaffected.
+    # A corrected Trials.mat in the results dir wins over D_Data: the trigger-fix gadget writes its
+    # correction there (never onto the shared raw), so downstream reads the corrected one. The
+    # D_Data scan still runs so multi-session status is reported. A plain subject has no
+    # results/Trials.mat, so normal resolution is unaffected. (The auto-combine below writes to
+    # D_Data, not here.)
     override = Path(results_dir) / COMBINED_NAME
     if override.exists() and not any(override.samefile(p) for p in combined if p.exists()):
         return ResolvedTrials(path=override, auto_combined=False, sessions=session_paths)
@@ -116,7 +119,10 @@ def resolve_trials_mat(d_data_subject_dir: Path | str, results_dir: Path | str) 
 
     if len(sessions) >= 2:
         merged = combine_session_trials([load_trials(p) for p in session_paths])
-        out = Path(results_dir) / COMBINED_NAME
+        # Write the combined file back into D_Data, alongside the last session's per-part files
+        # (canonical <date>/mat/Trials.mat) — the lab's own layout, so a re-resolve finds it as the
+        # existing combined and downstream enriches it in place.
+        out = session_paths[-1].with_name(COMBINED_NAME)
         save_trials(out, merged)
         return ResolvedTrials(
             path=out, auto_combined=True, sessions=session_paths, n_trials=len(merged)
