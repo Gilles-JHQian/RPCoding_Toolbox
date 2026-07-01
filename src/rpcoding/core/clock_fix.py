@@ -187,3 +187,19 @@ def apply_clock_fix(results_dir: Path | str, trials_mat: Path | str) -> dict:
         "uncorrected_blocks": [f.block for f in fits if not f.corrected],
         "cue_path": cue_path,
     }
+
+
+def reapply_if_present(results_dir: Path | str, trials_mat: Path | str) -> dict | None:
+    """Re-apply a saved clock-drift fit if ``clock_anchors.txt`` exists with anchors, else ``None``.
+
+    Steps that regenerate cue/condition events from the raw ``Trials.Auditory`` (make-events, the
+    trigger-fix) would otherwise silently wipe a prior clock-drift correction. Calling this right
+    after they write the events re-sticks the fit — it is idempotent, because the corrected onsets
+    are a pure function of the anchors + ``Auditory`` + trialInfo, not of the current events (so
+    correcting a freshly regenerated, drifted set reproduces the same result).
+    """
+    results_dir = Path(results_dir)
+    path = results_dir / paths.CLOCK_ANCHORS_TXT
+    if not path.exists() or not load_anchors(path):
+        return None
+    return apply_clock_fix(results_dir, trials_mat)

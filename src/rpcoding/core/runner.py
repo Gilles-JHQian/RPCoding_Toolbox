@@ -112,9 +112,25 @@ def _make_events(s: SubjectSession, report: Reporter | None = None) -> None:
     trials_mat = _resolve_trials(s, report).path
     r(0.25, "Generating cue events…")
     generate_cue_events(s.results_dir, trials_mat)
-    r(0.65, "Generating condition events…")
+    r(0.6, "Generating condition events…")
     generate_condition_events(s.results_dir)
+    _reapply_clock_fit(s, trials_mat, r)
     r(1.0, "Wrote cue + condition events")
+
+
+def _reapply_clock_fit(s: SubjectSession, trials_mat: Path, r: Reporter) -> None:
+    """Re-stick a saved clock-drift fit: make-events regenerates cue/condition events from the raw
+    Auditory, which would otherwise wipe a prior clock-drift correction (memory: clock-drift-fix).
+    Best-effort — a fit that can't re-apply must not undo the events we just wrote."""
+    from rpcoding.core.clock_fix import reapply_if_present
+
+    try:
+        rep = reapply_if_present(s.results_dir, trials_mat)
+    except Exception as exc:  # noqa: BLE001 - surfaced as a warning, not a step failure
+        r(None, f"⚠ Could not re-apply the saved clock-drift fit: {type(exc).__name__}: {exc}")
+        return
+    if rep is not None:
+        r(0.9, f"Re-applied saved clock-drift fit ({rep['corrected_blocks']} block(s))")
 
 
 # The pipeline + the MFA aligner print these phase banners on stdout/stderr; map the ones we
