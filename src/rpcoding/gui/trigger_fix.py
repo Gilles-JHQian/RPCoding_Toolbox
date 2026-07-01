@@ -140,11 +140,11 @@ class TriggerFixDialog(QDialog):
         outer.addWidget(self._out)
 
         row = QHBoxLayout()
-        self._analyze = QPushButton("分析 · Analyze")
+        self._analyze = QPushButton("Analyze")
         self._analyze.setObjectName("Primary")
         self._analyze.clicked.connect(self._do_analyze)
         row.addWidget(self._analyze)
-        self._apply = QPushButton("应用修复 · Apply fix")
+        self._apply = QPushButton("Apply fix")
         self._apply.setEnabled(False)
         self._apply.clicked.connect(self._do_apply)
         row.addWidget(self._apply)

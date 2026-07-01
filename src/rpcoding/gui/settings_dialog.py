@@ -177,7 +177,7 @@ class SettingsDialog(QDialog):
         )
         merge_btn.clicked.connect(lambda: self.done(self.MERGE_MULTIPART))
         row.addWidget(merge_btn)
-        trig_btn = QPushButton("修复触发错位 · Fix trigger misalignment…")
+        trig_btn = QPushButton("Fix trigger misalignment…")
         trig_btn.setToolTip(
             "For subjects whose Trials.Auditory is off by a mis-counted trigger: re-detect the\n"
             "raw trigger.mat pulses and align them to trialInfo, then write a corrected\n"
