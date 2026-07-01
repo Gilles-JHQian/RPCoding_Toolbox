@@ -6,6 +6,25 @@ in development); entries are grouped by the feature branch that delivered them, 
 
 ## [Unreleased]
 
+### Response placeholders for MFA-dropped Repeat trials (`feat/response-omitted-placeholders`)
+
+- **Write-Trials failed for UP subjects with "response count < Repeat count".** MFA writes one
+  response window per Repeat trial, but where it fails to align one, `textGrid2txt` silently drops
+  the empty-label row, so `mfa_resp_words` comes up short and the write-Trials 3:1 check (needs one
+  response per Repeat trial) fires. (No Delay aligns cleanly so it rarely hits this; UP's
+  pseudoword dictionary aligns less reliably — 6 subjects short by 1–8: D69/D94/D147/D63/D92/D130.)
+- **Fix — one row per Repeat trial with placeholders** (`core/rpcode/response_fill.py`): the editor
+  response lane now seeds a full tier — MFA-aligned responses mapped to their trial by cue-event
+  time (so a window capped by `max_dur` never loses a real one), and for each un-aligned Repeat
+  trial a placeholder: **`Omitted`** when the trial's `Omission == 'Responded'` (a real response
+  exists — a coder must find and code it), else **`NOISY`** (the lab's no/unclear-response code, an
+  acceptable final label). This also fixes the old positional mapping (a dropped row used to shift
+  every later response).
+- **Guard before writing Trials.mat:** `rpcode2trials.generate_trials` refuses to run while any
+  response is still labelled `Omitted` ("还有 N 个 Omitted 没有检查 — review them in the editor").
+  `NOISY` placeholders pass. Verified on the 6 subjects (all now reach 160 rows; Omitted counts
+  match the `Omission=='Responded'` misses: D94=2, D130=1, others 0).
+
 ### Trigger-misalignment fix gadget (`feat/trigger-fix-algorithm`, `feat/trigger-fix-gui`)
 
 - **The problem.** On some subjects (e.g. D90) `Trials.Auditory` is off by a *mis-counted trigger*:
