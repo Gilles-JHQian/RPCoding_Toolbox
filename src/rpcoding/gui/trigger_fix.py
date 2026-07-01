@@ -4,8 +4,8 @@ Pick a subject whose ``Trials.Auditory`` is corrupted by a mis-counted trigger; 
 the raw ``trigger.mat`` pulses (threshold adjustable — the one genuinely per-subject step, mirroring
 ``maketrigtimes``), aligns them to ``trialInfo`` via
 :func:`rpcoding.core.trigger_fix.align_to_trialinfo`, and shows the before/after per-block residual
-over the waveform so you can confirm before applying. Apply writes a corrected ``Trials.mat`` to the
-results dir and regenerates the cue/condition events.
+over the waveform so you can confirm before applying. Apply writes the corrected ``Auditory`` back
+into the D_Data ``Trials.mat`` (original backed up) and regenerates the cue/condition events.
 """
 
 from __future__ import annotations
@@ -300,8 +300,9 @@ class TriggerFixDialog(QDialog):
         task, subj = self._current_task(), self._subject.currentText()
         if QMessageBox.question(
             self, "Apply trigger fix",
-            f"Write a corrected Trials.mat and regenerate cue/condition events for\n"
-            f"{task.value} / {subj}?\n\nThe current files are backed up (*.before_trigger_fix).",
+            f"Write the corrected Auditory back into the D_Data Trials.mat and regenerate\n"
+            f"cue/condition events for {task.value} / {subj}?\n\n"
+            f"The originals are backed up (*.before_trigger_fix).",
         ) != QMessageBox.StandardButton.Yes:
             return
         self._out.appendPlainText("\nApplying …")
@@ -316,9 +317,10 @@ class TriggerFixDialog(QDialog):
             self._out.appendPlainText(f"Error: {type(exc).__name__}: {exc}")
             return
         self._out.appendPlainText(
-            f"✓ wrote {report.trials_path.name} (residual {report.align.max_residual_ms:.0f} ms); "
+            f"✓ corrected Auditory in D_Data {report.trials_path.name} "
+            f"(residual {report.align.max_residual_ms:.0f} ms); "
             f"events regenerated: {report.events_regenerated}.\n"
-            f"Downstream steps will now use the corrected Trials.mat."
+            f"Downstream steps (write-Trials, events.tsv) will now read the corrected Trials.mat."
         )
         self._apply.setEnabled(False)  # applied; re-analyze to act again
 

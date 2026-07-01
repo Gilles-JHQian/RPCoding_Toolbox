@@ -18,8 +18,9 @@ in development); entries are grouped by the feature branch that delivered them, 
   recent same-task hand-combine (D134, NoDelay → 1..504). The pipeline auto-combine and the
   Settings "merge multi-part" gadget now produce the identical file (the gadget's Trials merge
   delegates to `combine_session_trials`); trialInfo is still plain `horzcat` (no renumber).
-- The trigger-fix gadget's corrected `Trials.mat` still lives in the results dir (a correction
-  never overwrites the shared raw) and still wins via `resolve_trials_mat`'s results-dir precedence.
+- The trigger-fix gadget now also writes its correction into D_Data (see its own entry below), so
+  `resolve_trials_mat`'s results-dir precedence was removed and every resolved `Trials.mat` is the
+  D_Data one.
 
 ### Manifest timestamps in local time (`fix/manifest-local-time`)
 
@@ -63,20 +64,26 @@ in development); entries are grouped by the feature branch that delivered them, 
 - **Algorithm (`core/trigger_fix.py`).** `detect_pulses` (adjustable threshold + noise-zeroing — the
   one genuinely per-subject step, mirroring `maketrigtimes`). `align_to_trialinfo` anchors once on the
   full-length template by **minimizing fit tightness** (tol-capped total distance), which locks onto
-  the *stimulus* pulses rather than the *cue* pulses of the double trigger (both give a full template
-  match, but cue pulses sit a variable ~2 s ahead of `stimulusAudioStart` so they fit loosely), then
-  a **drift-tolerant sequential snap** re-anchors each trial and interpolates a missing pulse.
-  `apply_trigger_fix` writes a corrected `Trials.mat` to the results dir and regenerates the
-  cue/condition events; `is_improvement` guards the already-clean / irregular case so a clean file is
-  never degraded. `resolve_trials_mat` now prefers a results-dir `Trials.mat` (the tool's own combine
-  or a correction gadget's output) over the D_Data copy, so downstream steps read the corrected file.
+  the *stimulus* pulses rather than the *cue* pulses of the double trigger. Where the cue→stimulus gap
+  varies that alone suffices; where it is (near-)constant the two pulse trains fit equally, so the
+  anchor cost also credits a cue pulse a gap ahead of each candidate stimulus (from trialInfo
+  `cueStart`) — only the true stimulus anchor has both, so it wins even with a fixed gap (harmless for
+  single-trigger subjects). Then a **drift-tolerant sequential snap** re-anchors each trial and
+  interpolates a missing pulse. `is_improvement` guards the already-clean / irregular case so a clean
+  file is never degraded.
+- **The correction lands in D_Data.** `apply_trigger_fix` writes the corrected `Auditory` **back into
+  the D_Data `Trials.mat`** in place (original backed up to `Trials.mat.before_trigger_fix`), so the
+  shared dataset the downstream events.tsv pipeline reads carries the fix; if write-Trials already ran,
+  its pristine `Trials_org.mat` is corrected too so a re-run keeps the fix. It then regenerates the
+  cue/condition events. (The earlier results-dir copy + `resolve_trials_mat` results-dir precedence
+  were removed — everything resolves to the one D_Data file.)
 - **Validated on real data.** D90 (broken block 1) `2281 ms → 7 ms` residual, aligned; D139 (already
   clean) reproduces the lab's answer (`18 ms → 4 ms`); D86 (irregular 851-pulse structure) is left
   untouched by the improvement guard.
-- **UI (Settings → 异常处理 · Anomaly handling → 修复触发错位 · Fix trigger misalignment…).** Pick a
-  task/subject, **Analyze** (loads the trigger once, then a threshold slider re-detects/re-aligns
-  live), review the detected pulses + recovered trial grid over the max-pooled waveform and the
-  before/after per-block residual, then **Apply**. (`gui/trigger_fix.TriggerFixDialog`.)
+- **UI (Settings → Anomaly handling → Fix trigger misalignment…).** Pick a task/subject, **Analyze**
+  (loads the trigger once, then a threshold slider re-detects/re-aligns live), review the detected
+  pulses + recovered trial grid over the max-pooled waveform and the before/after per-block residual,
+  then **Apply**. (`gui/trigger_fix.TriggerFixDialog`.)
 
 ### Merge multi-part recordings (`feat/multipart-merge`)
 
