@@ -68,6 +68,11 @@ in development); entries are grouped by the feature branch that delivered them, 
   parts in D_Data. Existing merged files are never overwritten (idempotent). Exposed as **Settings →
   Anomaly handling → Merge multi-part files…**: pick a task/subject (defaults to the current one)
   and merge. Verified on D147 (252 + 252 → 504, experiment byte-identical to part 1).
+- **Merged .mat now written compressed** (`fix/multipart-compress`): the concat used a plain
+  `scipy.io.savemat`, which doesn't compress, so a merged `Trials.mat` / `trialInfo.mat` was ~30×
+  bloated (D147 Trials 359 KB, trialInfo 680 KB) — the data was correct, just huge (repeated string
+  fields like `FilenamePrefix` don't collapse when uncompressed). It now uses the project's
+  compressed `save_mat`, matching MATLAB (D147 → 10 KB / 25 KB). D147's files were regenerated.
 
 ### Clock-drift fix gadget (`feat/clock-fix-marking`, `feat/clock-fix-algorithm`)
 

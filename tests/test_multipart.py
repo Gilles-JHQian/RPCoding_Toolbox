@@ -9,11 +9,13 @@ from rpcoding.core.multipart import merge_subject, numbered_parts
 
 
 def _save_struct(path, var, n, base_val=0):
-    """A 1xN MATLAB struct array with Trial/Auditory fields (stands in for Trials/trialInfo)."""
-    arr = np.zeros((1, n), dtype=[("Trial", "O"), ("Auditory", "O")])
+    """A 1xN MATLAB struct array (stands in for Trials/trialInfo); the repeated string field makes
+    the compressed vs uncompressed size difference obvious."""
+    arr = np.zeros((1, n), dtype=[("Trial", "O"), ("Auditory", "O"), ("FilenamePrefix", "O")])
     for i in range(n):
         arr[0, i]["Trial"] = i + 1
         arr[0, i]["Auditory"] = base_val + i
+        arr[0, i]["FilenamePrefix"] = "D9_Lexical_No_Delay_260530"
     sio.savemat(str(path), {var: arr})
 
 
@@ -51,6 +53,17 @@ def test_merge_subject_concats_and_copies(tmp_path):
     assert (subj / "mat" / "experiment.mat").read_bytes() == (
         subj / "mat" / "experiment1.mat"
     ).read_bytes()
+
+
+def test_merge_writes_compressed(tmp_path):
+    # The merged .mat must be compressed like MATLAB — an uncompressed struct array bloats ~30x.
+    subj = _make_subject(tmp_path, 100, 100)
+    merge_subject(subj)
+    merged = subj / "230101" / "mat" / "Trials.mat"
+    T = sio.loadmat(str(merged))["Trials"]
+    uncompressed = tmp_path / "unc.mat"
+    sio.savemat(str(uncompressed), {"Trials": T})  # scipy default: no compression
+    assert merged.stat().st_size < uncompressed.stat().st_size / 2
 
 
 def test_merge_is_idempotent(tmp_path):
