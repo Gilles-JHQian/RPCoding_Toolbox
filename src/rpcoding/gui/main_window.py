@@ -230,10 +230,15 @@ class MainWindow(QMainWindow):
         self._dashboard.refresh()
 
     def _close_editor(self) -> None:
+        # close() (not hide()) so the editor's unsaved-changes prompt fires on the Back button too,
+        # the same as Esc / the window close button. A cancelled prompt leaves it open.
         if self._editor is not None:
-            self._editor.hide()
+            self._editor.close()
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt override
         if self._editor is not None:
-            self._editor.close()
+            self._editor.close()  # prompts if the editor has unsaved edits
+            if self._editor.isVisible():  # user cancelled that prompt -> don't close the app
+                event.ignore()
+                return
         super().closeEvent(event)
