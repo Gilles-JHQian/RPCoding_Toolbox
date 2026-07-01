@@ -65,8 +65,9 @@ class _PathField(QWidget):
 
 
 class SettingsDialog(QDialog):
-    # exec() result code meaning "the user clicked Fix clock drift" (vs Accepted=1 / Rejected=0).
+    # exec() result codes for the anomaly-handling gadgets (vs Accepted=1 / Rejected=0).
     FIX_CLOCK = 2
+    MERGE_MULTIPART = 3
 
     def __init__(self, config: AppConfig, theme: Theme | None = None, parent=None):
         super().__init__(parent)
@@ -168,6 +169,13 @@ class SettingsDialog(QDialog):
         )
         btn.clicked.connect(lambda: self.done(self.FIX_CLOCK))
         row.addWidget(btn)
+        merge_btn = QPushButton("合并分段录制 · Merge multi-part files…")
+        merge_btn.setToolTip(
+            "For subjects recorded in >1 part, combine the numbered Trials1/2, trialInfo1/2 and\n"
+            "experiment1/2 into single Trials.mat / trialInfo.mat / experiment.mat in D_Data."
+        )
+        merge_btn.clicked.connect(lambda: self.done(self.MERGE_MULTIPART))
+        row.addWidget(merge_btn)
         row.addStretch(1)
         gl.addLayout(row)
         return group

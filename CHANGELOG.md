@@ -6,6 +6,19 @@ in development); entries are grouped by the feature branch that delivered them, 
 
 ## [Unreleased]
 
+### Merge multi-part recordings (`feat/multipart-merge`)
+
+- **Subjects recorded in more than one part** (e.g. No-Delay D147: `Trials1.mat` + `Trials2.mat`,
+  `trialInfo1/2`, `experiment1/2`) never had a combined `Trials.mat`, so the pipeline couldn't run
+  (`find_trials_mat` needs exactly one `**/mat/Trials.mat`). New `core/multipart.py` combines the
+  numbered parts — **Trials / trialInfo concatenated in order** (matching the lab's
+  `combine_trialInfo.m` horzcat; trial numbers and per-part timestamps left as-is), **experiment
+  copied from part 1** (the parts are content-identical; copying also dodges scipy's 31-char
+  field-name limit) — writing single `Trials.mat` / `trialInfo.mat` / `experiment.mat` next to their
+  parts in D_Data. Existing merged files are never overwritten (idempotent). Exposed as **Settings →
+  Anomaly handling → Merge multi-part files…**: pick a task/subject (defaults to the current one)
+  and merge. Verified on D147 (252 + 252 → 504, experiment byte-identical to part 1).
+
 ### Backend — pipeline core (golden-file verified)
 
 - **Scaffolding & environment** (`feat/scaffolding`): src layout, `pyproject.toml`, cross-platform

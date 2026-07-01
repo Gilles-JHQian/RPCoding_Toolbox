@@ -134,3 +134,41 @@ def test_batch_dialog_finish_after_stop_marks_remaining(qtbot, tmp_path):
     assert dlg._table.item(1, 1).text() == "— stopped"  # D101 never started
     assert "Stopped" in dlg._overall_label.text()
     assert dlg._run.isEnabled() and not dlg._stop.isEnabled()
+
+
+def test_merge_multipart_dialog_merges(qtbot, tmp_path):
+    import numpy as np
+    import scipy.io as sio
+
+    from rpcoding.core import paths
+    from rpcoding.gui.multipart_merge import MergeMultipartDialog
+
+    droot = tmp_path / "CoganLab"
+    subj_dir = paths.d_data_subject_dir(droot, Task.LEXICAL_NODELAY, "D9")
+    dm = subj_dir / "230101" / "mat"
+    dm.mkdir(parents=True)
+    (subj_dir / "mat").mkdir(parents=True)
+
+    def _save(path, var, n):
+        arr = np.zeros((1, n), dtype=[("Trial", "O")])
+        for i in range(n):
+            arr[0, i]["Trial"] = i + 1
+        sio.savemat(str(path), {var: arr})
+
+    _save(dm / "Trials1.mat", "Trials", 3)
+    _save(dm / "Trials2.mat", "Trials", 4)
+    _save(dm / "trialInfo1.mat", "trialInfo", 3)
+    _save(dm / "trialInfo2.mat", "trialInfo", 4)
+    sio.savemat(str(subj_dir / "mat" / "experiment1.mat"), {"experiment": np.array([[1.0]])})
+    sio.savemat(str(subj_dir / "mat" / "experiment2.mat"), {"experiment": np.array([[1.0]])})
+
+    dlg = MergeMultipartDialog(
+        AppConfig(droot=droot), default_task=Task.LEXICAL_NODELAY, default_subject="D9"
+    )
+    qtbot.addWidget(dlg)
+    assert dlg._subject.currentText() == "D9"  # defaulted to the passed subject
+    dlg._do_merge()
+    assert (dm / "Trials.mat").exists() and (dm / "trialInfo.mat").exists()
+    assert (subj_dir / "mat" / "experiment.mat").exists()
+    assert "merged" in dlg._out.toPlainText()
+    assert sio.loadmat(str(dm / "Trials.mat"))["Trials"].shape[1] == 7  # 3 + 4
