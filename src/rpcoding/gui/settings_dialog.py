@@ -68,6 +68,7 @@ class SettingsDialog(QDialog):
     # exec() result codes for the anomaly-handling gadgets (vs Accepted=1 / Rejected=0).
     FIX_CLOCK = 2
     MERGE_MULTIPART = 3
+    FIX_TRIGGER = 4
 
     def __init__(self, config: AppConfig, theme: Theme | None = None, parent=None):
         super().__init__(parent)
@@ -176,6 +177,14 @@ class SettingsDialog(QDialog):
         )
         merge_btn.clicked.connect(lambda: self.done(self.MERGE_MULTIPART))
         row.addWidget(merge_btn)
+        trig_btn = QPushButton("修复触发错位 · Fix trigger misalignment…")
+        trig_btn.setToolTip(
+            "For subjects whose Trials.Auditory is off by a mis-counted trigger: re-detect the\n"
+            "raw trigger.mat pulses and align them to trialInfo, then write a corrected\n"
+            "Trials.mat and regenerate the cue/condition events."
+        )
+        trig_btn.clicked.connect(lambda: self.done(self.FIX_TRIGGER))
+        row.addWidget(trig_btn)
         row.addStretch(1)
         gl.addLayout(row)
         return group
