@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 from rpcoding.core import paths
@@ -16,7 +16,8 @@ _MANIFEST_NAME = "manifest.json"
 
 
 def _now() -> str:
-    return datetime.now(UTC).isoformat()
+    # Local time, tz-aware (e.g. ...T17:27:20-04:00) so manifest timestamps match the system clock.
+    return datetime.now().astimezone().isoformat()
 
 
 def _exists(p: Path) -> bool:
