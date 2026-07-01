@@ -15,6 +15,7 @@ from rpcoding.core.events.block_onsets import load_block_onsets_tier
 from rpcoding.core.labels import Interval, Tier, read_tier
 from rpcoding.core.matio import load_trialinfo, trial_block
 from rpcoding.core.mfa.ingest import ingest_mfa_tiers
+from rpcoding.core.rpcode.response_fill import build_response_tier
 from rpcoding.core.steps import Step
 
 TierSpec = tuple[str, Tier, bool]
@@ -26,10 +27,16 @@ def _load_or_empty(path: Path, name: str) -> Tier:
 
 
 def _response_tier(results_dir: Path) -> Tier:
-    """The response lane: the saved coding if present, else the MFA response words, else empty."""
+    """The response lane: the saved coding if present, else the MFA response words (with one
+    Omitted/NOISY placeholder per Repeat trial MFA failed to align), else empty."""
     saved = results_dir / paths.RESP_WORDS_ERRORS_TXT
     if saved.exists():
         return read_tier(saved, "response")
+    # One row per Repeat trial with Omitted/NOISY placeholders for MFA drops; None (fall through)
+    # unless this is an MFA'd NoDelay/UP subject.
+    filled = build_response_tier(results_dir)
+    if filled is not None:
+        return filled
     mfa = ingest_mfa_tiers(results_dir / paths.MFA_DIRNAME)
     src = mfa.get("mfa_resp_words")
     return Tier("response", list(src.intervals)) if src is not None else Tier("response", [])

@@ -17,6 +17,7 @@ import numpy as np
 from rpcoding.core.labels import read_tier
 from rpcoding.core.matio import load_trials, save_mat, trial_cue, trial_stim
 from rpcoding.core.rpcode import errors as E
+from rpcoding.core.rpcode.response_fill import count_omitted
 from rpcoding.core.tasks import Task
 from rpcoding.core.wordlists import NONWORD, WORD, classify
 
@@ -222,6 +223,16 @@ def generate_trials(
     else:
         response_code = list(read_tier(results_dir / "bsliang_resp_words_errors.txt").intervals)
         error_code = None
+
+    # Un-reviewed MFA-drop placeholders (see response_fill): the subject responded but nothing was
+    # coded, so refuse to write Trials.mat until a coder reviews them.
+    n_omitted = count_omitted(response_code)
+    if n_omitted:
+        raise ValueError(
+            f"还有 {n_omitted} 个 Omitted 没有检查 — {n_omitted} response(s) are still labelled "
+            "'Omitted' (MFA missed them and they weren't reviewed). Code them in the editor, then "
+            "re-run write-Trials."
+        )
 
     result = rpcode_to_trials(
         trials,

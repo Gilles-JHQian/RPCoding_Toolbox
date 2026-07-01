@@ -219,6 +219,27 @@ def test_save_trials_writes_struct_array_not_cell(tmp_path):
     assert [t["Cue_Tag"] for t in back] == ["Cue/x/CORRECT", "Cue/y/CORRECT"]
 
 
+def test_generate_trials_blocks_on_unreviewed_omitted(tmp_path):
+    from rpcoding.core.labels import Interval, Tier, write_tier
+    from rpcoding.core.rpcode.rpcode2trials import generate_trials, save_trials
+
+    rdir = tmp_path / "res"
+    (rdir / "mfa").mkdir(parents=True)
+    trials_mat = tmp_path / "Trials.mat"
+    save_trials(trials_mat, [{"Auditory": 0.0, "Start": 0.0}])
+    write_tier(Tier("s", [Interval(0, 1, "w.wav")]), rdir / "mfa" / "mfa_stim_words.txt")
+    write_tier(Tier("r", [Interval(0, 1, "Omitted")]), rdir / "bsliang_resp_words_errors.txt")
+    with pytest.raises(ValueError, match="Omitted"):
+        generate_trials(
+            rdir,
+            trials_mat,
+            [{"cue": "Repeat", "sound": "w.wav"}],
+            {"w.wav"},
+            set(),
+            task=Task.LEXICAL_NODELAY,
+        )
+
+
 def test_save_mat_is_compressed_like_matlab(tmp_path):
     import numpy as np
     import scipy.io as sio
