@@ -38,6 +38,9 @@ ALLBLOCKS_WAV = "allblocks.wav"
 ALLBLOCKS_ORIGINAL_WAV = "allblocks_original.wav"
 BLOCK_WAV_ONSETS_MAT = "block_wav_onsets.mat"
 TRIALINFO_MAT = "trialInfo.mat"
+# The tool's own prepared/corrected Trials (multi-session auto-combine, trigger-fix) lands here in
+# the results dir and takes precedence over the upstream D_Data copy.
+TRIALS_MAT = "Trials.mat"
 FIRST_STIMS_TXT = "first_stims.txt"
 CUE_EVENTS_TXT = "cue_events.txt"
 CONDITION_EVENTS_TXT = "condition_events.txt"
