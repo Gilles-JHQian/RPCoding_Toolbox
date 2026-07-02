@@ -173,8 +173,8 @@ def test_dashboard_scan(qtbot, tmp_path):
     dash = Dashboard(AppConfig(droot=tmp_path), DARK_THEME)
     qtbot.addWidget(dash)
     dash._task_combo.setCurrentIndex(0)  # LexicalDecRepNoDelay
-    dash._scan()
-    assert dash._subjects.count() == 2
+    dash._scan()  # lists subjects off the UI thread, so the rows arrive asynchronously
+    qtbot.waitUntil(lambda: dash._subjects.count() == 2, timeout=3000)
 
 
 def test_main_window_theme_toggle(qtbot, tmp_path):

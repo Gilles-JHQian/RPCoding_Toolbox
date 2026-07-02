@@ -108,11 +108,15 @@ def test_dashboard_task_switch_rescans(qtbot, tmp_path):
     _make_subject_dir(tmp_path, Task.LEXICAL_DELAY, "D2")
     dash = Dashboard(AppConfig(droot=tmp_path), DARK_THEME)
     qtbot.addWidget(dash)
-    dash._scan()
-    assert dash._subjects.count() == 1 and "D1" in dash._subjects._rows
+    dash._scan()  # lists subjects off the UI thread now, so rows arrive asynchronously
+    qtbot.waitUntil(
+        lambda: dash._subjects.count() == 1 and "D1" in dash._subjects._rows, timeout=3000
+    )
 
     dash._task_combo.setCurrentIndex(1)  # -> LexicalDecRepDelay, auto-rescans
-    assert dash._subjects.count() == 1 and "D2" in dash._subjects._rows
+    qtbot.waitUntil(
+        lambda: dash._subjects.count() == 1 and "D2" in dash._subjects._rows, timeout=3000
+    )
 
 
 def test_dashboard_file_based_progress(qtbot, tmp_path):
@@ -124,9 +128,13 @@ def test_dashboard_file_based_progress(qtbot, tmp_path):
     dash = Dashboard(cfg, DARK_THEME)
     qtbot.addWidget(dash)
     dash._scan()
-    # summaries fill in asynchronously (one per event-loop tick); create-results + concat -> 2/8
+    # summaries fill in asynchronously (listing off-thread, then a parallel status scan); the row
+    # itself is created async too, so guard the lookup. create-results + concat -> 2/8
     # (8 required steps; the optional Denoise is excluded from the count)
-    qtbot.waitUntil(lambda: dash._subjects._rows["D1"]._prog.text() == "2/8", timeout=3000)
+    qtbot.waitUntil(
+        lambda: "D1" in dash._subjects._rows and dash._subjects._rows["D1"]._prog.text() == "2/8",
+        timeout=3000,
+    )
     # …and the row shows the current step it's at (next required step = build trialInfo)
     assert dash._subjects._rows["D1"]._step.text() == "trialInfo"
 
@@ -229,10 +237,14 @@ def test_save_and_restore_subject_list(qtbot, tmp_path, monkeypatch):
     dash = Dashboard(AppConfig(droot=tmp_path), DARK_THEME)
     qtbot.addWidget(dash)
     dash._scan()
+    qtbot.waitUntil(lambda: dash._subjects.count() == 3, timeout=3000)
     dash._subjects.set_checked(["D2"])
     dash._save_list()
     dash._scan()  # rescans and restores the saved selection
-    assert dash._subjects.checked_subjects() == ["D2"]
+    qtbot.waitUntil(
+        lambda: dash._subjects.count() == 3 and dash._subjects.checked_subjects() == ["D2"],
+        timeout=3000,
+    )
 
 
 def test_select_all_toggle(qtbot, tmp_path):

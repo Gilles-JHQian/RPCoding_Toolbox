@@ -200,6 +200,48 @@ def test_initial_states(tmp_path):
     assert st[Step.MARK_FIRST_STIMS] == EffectiveState.BLOCKED
 
 
+def test_effective_states_stats_each_path_once(monkeypatch, tmp_path):
+    # A single effective_states() pass caches file stats. Dependent steps re-check the same output
+    # paths (e.g. Trials.mat is hit by _completed_on_disk(BUILD_TRIALINFO) *and*
+    # _dep_fingerprints(MARK_FIRST_STIMS)); without the cache each path is stat'd several times —
+    # on a Box-synced folder that multiplies the latency-bound I/O per subject.
+    from collections import Counter
+    from pathlib import Path
+
+    s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D9")
+    rd = s.results_dir
+    rd.mkdir(parents=True, exist_ok=True)
+    for name in (
+        paths.ALLBLOCKS_WAV,
+        paths.BLOCK_WAV_ONSETS_MAT,
+        paths.TRIALINFO_MAT,
+        paths.CUE_EVENTS_TXT,
+        paths.CONDITION_EVENTS_TXT,
+    ):
+        (rd / name).write_bytes(b"x")
+    (rd / paths.FIRST_STIMS_TXT).write_text("1\t2\t1\n", newline="\n")
+    for step in (
+        Step.CREATE_RESULTS,
+        Step.CONCAT_WAVS,
+        Step.BUILD_TRIALINFO,
+        Step.MARK_FIRST_STIMS,
+        Step.MAKE_EVENTS,
+    ):
+        s.record_done(step)  # 'done' steps also run the dep-fingerprint (provenance) branch
+
+    calls: Counter = Counter()
+    real_stat = Path.stat
+
+    def counting_stat(self, *a, **k):
+        calls.update([str(self)])
+        return real_stat(self, *a, **k)
+
+    monkeypatch.setattr(Path, "stat", counting_stat)  # patch after the record_done writes above
+    s.effective_states()
+    assert calls  # it did stat some paths
+    assert max(calls.values()) == 1  # ...but never the same path twice within one pass
+
+
 def test_state_progresses_with_done(tmp_path):
     s = SubjectSession(AppConfig(droot=tmp_path), _TASK, "D1")
     s.record_done(Step.CREATE_RESULTS)
