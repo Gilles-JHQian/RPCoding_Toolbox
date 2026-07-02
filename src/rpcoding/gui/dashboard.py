@@ -37,6 +37,7 @@ from rpcoding.gui.settings_dialog import SettingsDialog
 from rpcoding.gui.theme import Theme
 from rpcoding.gui.widgets.step_row import StepRow
 from rpcoding.gui.widgets.subject_list import SubjectList
+from rpcoding.gui.workers.summary_scanner import SubjectSummaryScanner
 from rpcoding.gui.workers.worker import run_in_thread
 
 
@@ -66,22 +67,21 @@ class Dashboard(QWidget):
         self._theme = theme
         self._session: SubjectSession | None = None
         self._active: tuple | None = None  # (thread, worker) kept alive
-        self._scan_token = 0
         # Path to the most recent run log (MFA writes mfa_run.log); the status bar reveals it.
         self._last_log_path: Path | None = None
         # Resolving the raw-blocks dir walks the Box folder tree (slow), so the Folders menu does it
         # off the UI thread and caches the result per subject (key = "task/subject").
         self._blocks_cache: dict[str, Path | None] = {}
         self._blocks_pending: set[str] = set()
-        # Subject summaries are computed one-per-event-loop-tick so a big (cloud-synced) scan never
-        # blocks the UI; a child QTimer is auto-cancelled on teardown.
-        self._summary_queue: list[str] = []
+        # Subject status is computed off the UI thread and in parallel — Box stat() latency is
+        # I/O-bound, so a small thread pool overlaps it and a big (cloud-synced) scan never blocks
+        # the UI. Results stream back per subject via a queued signal; a generation token inside the
+        # scanner drops results from a superseded scan (task switch / re-scan).
         self._summary_total = 0
         self._summary_done = 0
-        self._summary_timer = QTimer(self)
-        self._summary_timer.setSingleShot(True)
-        self._summary_timer.setInterval(0)
-        self._summary_timer.timeout.connect(self._process_next_summary)
+        self._scanner = SubjectSummaryScanner(self._config, self)
+        self._scanner.subject_ready.connect(self._on_summary_ready)
+        self._scanner.scan_finished.connect(self._on_scan_finished)
         self._step_tick.connect(self._on_step_progress)
 
         outer = QVBoxLayout(self)
@@ -475,18 +475,28 @@ class Dashboard(QWidget):
         return Task.from_str(self._task_combo.currentText())
 
     def _scan(self) -> None:
-        self._scan_token += 1
-        subs = scan_subjects(paths.d_data_dir(self._config.droot, self.current_task))
+        # List subjects off the UI thread too — a single iterdir on a Box-synced folder can stall.
+        # The result callback (on the GUI thread) builds the rows and kicks off the status scan.
+        self._scanner.cancel()  # stop any in-flight scan for the previous task
+        task = self.current_task
+        d = paths.d_data_dir(self._config.droot, task)
+        run_in_thread(
+            self,
+            lambda: scan_subjects(d),
+            on_result=lambda subs, t=task: self._on_subjects_listed(t, subs),
+        )
+
+    def _on_subjects_listed(self, task: Task, subs: list[str]) -> None:
+        if task != self.current_task:
+            return  # a task switch superseded this listing
         self._subjects.set_subjects(subs)
-        saved = load_subject_list(self.current_task.value)
+        saved = load_subject_list(task.value)
         if saved is not None:
             self._subjects.set_checked(saved)  # restore a previously-saved selection
-        self._update_count()
-        self._summary_queue = list(subs)
         self._summary_total = len(subs)
         self._summary_done = 0
-        if subs:
-            self._summary_timer.start()
+        self._update_count()
+        self._scanner.start(task, subs)  # bumps the generation, cancelling any prior scan
 
     def _toggle_all(self) -> None:
         # All-or-nothing from the current row state (ignore the checkbox's own tri-state cycle).
@@ -510,25 +520,23 @@ class Dashboard(QWidget):
         """Short label of the subject's current step (or a done marker) for the subject list."""
         return "✓ done" if current is None else STEP_SHORT.get(current, current.value)
 
-    def _process_next_summary(self) -> None:
-        if not self._summary_queue:
-            return
-        sid = self._summary_queue.pop(0)
-        try:
-            done, total, state, current = SubjectSession(
-                self._config, self.current_task, sid
-            ).status()
-            self._subjects.set_summary(sid, done, total, state, self._step_label(current))
-        except OSError:
-            pass  # a cloud-sync placeholder we can't read yet; skip it this pass
+    def _on_summary_ready(
+        self,
+        gen: int,
+        sid: str,
+        done: int,
+        total: int,
+        state: EffectiveState,
+        current: Step | None,
+    ) -> None:
+        self._subjects.set_summary(sid, done, total, state, self._step_label(current))
         self._summary_done += 1
         n, k = self._summary_total, self._summary_done
-        if k >= n:
-            self._update_count()
-        else:
+        if k < n:
             self._subj_count.setText(f"{n} found · {k}/{n}…")  # transient compute progress
-        if self._summary_queue:
-            self._summary_timer.start()  # next subject on the next event-loop tick
+
+    def _on_scan_finished(self, gen: int) -> None:
+        self._update_count()  # final count once every subject has resolved
 
     def _on_task_changed(self) -> None:
         self._flush_notes()
@@ -807,7 +815,12 @@ class Dashboard(QWidget):
     def set_config(self, config: AppConfig) -> None:
         """Apply and persist a new config; rebuild the current session against it."""
         self._config = config
+        self._scanner.set_config(config)
         save_config(config)
         if self._session is not None:
             self._session = SubjectSession(config, self.current_task, self._session.subject)
         self._refresh_states()
+
+    def shutdown(self) -> None:
+        """Stop the background subject scan (called from the window's closeEvent)."""
+        self._scanner.shutdown()

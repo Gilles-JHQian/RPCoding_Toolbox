@@ -241,4 +241,7 @@ class MainWindow(QMainWindow):
             if self._editor.isVisible():  # user cancelled that prompt -> don't close the app
                 event.ignore()
                 return
+        # Stop the dashboard's background subject scan (a child widget gets no closeEvent of its
+        # own) so no pooled worker emits into a half-torn-down object during shutdown.
+        self._dashboard.shutdown()
         super().closeEvent(event)

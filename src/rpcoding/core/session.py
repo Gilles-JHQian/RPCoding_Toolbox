@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import stat
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -20,27 +22,49 @@ def _now() -> str:
     return datetime.now().astimezone().isoformat()
 
 
-def _exists(p: Path) -> bool:
-    """``p.exists()`` that treats an un-stat-able cloud placeholder (OSError) as absent."""
+# Within a single effective_states()/status() pass the disk is a fixed snapshot, so we stat each
+# path at most once and reuse it. Otherwise _completed_on_disk() and _dep_fingerprints() re-stat the
+# same output files across dependent steps — roughly doubling the (Box-latency-bound) I/O per
+# subject. A pass threads a fresh cache in; callers without one (default None) just skip the reuse.
+_StatCache = dict[str, "os.stat_result | None"]
+
+
+def _stat(p: Path, cache: _StatCache | None) -> os.stat_result | None:
+    """Stat ``p`` once (per cache); None for a missing / un-stat-able cloud placeholder (OSError).
+
+    Follows symlinks, matching the ``Path.exists``/``.is_dir``/``.stat`` these helpers replaced."""
+    key = str(p)
+    if cache is not None and key in cache:
+        return cache[key]
     try:
-        return p.exists()
+        st: os.stat_result | None = p.stat()
     except OSError:
-        return False
+        st = None
+    if cache is not None:
+        cache[key] = st
+    return st
 
 
-def _is_dir(p: Path) -> bool:
-    try:
-        return p.is_dir()
-    except OSError:
-        return False
+def _exists(p: Path, cache: _StatCache | None = None) -> bool:
+    """Treats an un-stat-able cloud placeholder (OSError) / missing path as absent."""
+    return _stat(p, cache) is not None
 
 
-def _nonempty(p: Path) -> bool:
+def _is_dir(p: Path, cache: _StatCache | None = None) -> bool:
+    st = _stat(p, cache)
+    return st is not None and stat.S_ISDIR(st.st_mode)
+
+
+def _nonempty(p: Path, cache: _StatCache | None = None) -> bool:
     """A real (non-placeholder) file with content; an empty file is treated as absent."""
-    try:
-        return p.stat().st_size > 0
-    except OSError:
-        return False
+    st = _stat(p, cache)
+    return st is not None and st.st_size > 0
+
+
+def _fingerprint(p: Path, cache: _StatCache | None = None) -> str | None:
+    """Cache-aware equivalent of :func:`rpcoding.core.manifest.fingerprint` (``size:mtime_ns``)."""
+    st = _stat(p, cache)
+    return None if st is None else f"{st.st_size}:{st.st_mtime_ns}"
 
 
 @dataclass
@@ -113,7 +137,9 @@ class SubjectSession:
         self.save()
 
     # ---- state computation ----
-    def _dep_fingerprints(self, step: Step) -> dict[str, str | None]:
+    def _dep_fingerprints(
+        self, step: Step, cache: _StatCache | None = None
+    ) -> dict[str, str | None]:
         fps: dict[str, str | None] = {}
         for dep in STEP_SPECS[step].deps:
             for o in STEP_SPECS[dep].outputs:
@@ -122,13 +148,13 @@ class SubjectSession:
                     # downstream step. Its sibling block_wav_onsets.mat (same concat step, untouched
                     # by MFA) still flags a genuine re-concat.
                     continue
-                fps[o] = fingerprint(self.output_path(o))
+                fps[o] = _fingerprint(self.output_path(o), cache)
         return fps
 
     def _outputs_present(self, spec: StepSpec) -> bool:
         return all(fingerprint(self.output_path(o)) is not None for o in spec.outputs)
 
-    def _completed_on_disk(self, step: Step) -> bool | None:
+    def _completed_on_disk(self, step: Step, cache: _StatCache | None = None) -> bool | None:
         """Whether a step's output exists on disk, or ``None`` if it leaves no detectable artifact.
 
         This lets the dashboard mark steps green for subjects already processed by the legacy
@@ -136,26 +162,33 @@ class SubjectSession:
         """
         rd = self.results_dir
         if step == Step.CREATE_RESULTS:
-            return _is_dir(rd)
+            return _is_dir(rd, cache)
         if step == Step.CONCAT_WAVS:
-            return _exists(rd / paths.ALLBLOCKS_WAV)
+            return _exists(rd / paths.ALLBLOCKS_WAV, cache)
         if step == Step.BUILD_TRIALINFO:
-            return _exists(rd / paths.TRIALINFO_MAT)
+            return _exists(rd / paths.TRIALINFO_MAT, cache)
         if step == Step.MARK_FIRST_STIMS:
-            return _exists(rd / paths.FIRST_STIMS_TXT)
+            return _exists(rd / paths.FIRST_STIMS_TXT, cache)
         if step == Step.MAKE_EVENTS:
-            return _exists(rd / paths.CUE_EVENTS_TXT) and _exists(rd / paths.CONDITION_EVENTS_TXT)
+            return _exists(rd / paths.CUE_EVENTS_TXT, cache) and _exists(
+                rd / paths.CONDITION_EVENTS_TXT, cache
+            )
         if step == Step.RUN_MFA:
             # An empty mfa_stim_words.txt is a failed/aborted run (the pipeline can leave a 0-byte
             # file behind), so require real content rather than mere existence.
             mfa = rd / paths.MFA_DIRNAME
-            return _is_dir(mfa) and _nonempty(mfa / "mfa_stim_words.txt")
+            return _is_dir(mfa, cache) and _nonempty(mfa / "mfa_stim_words.txt", cache)
         if step == Step.RESPONSE_CODING:
-            return _exists(rd / paths.RESP_WORDS_ERRORS_TXT) or _exists(rd / "response_coding.txt")
+            return _exists(rd / paths.RESP_WORDS_ERRORS_TXT, cache) or _exists(
+                rd / "response_coding.txt", cache
+            )
         return None  # DENOISE, WRITE_TRIALS: no reliable on-disk signal
 
     def effective_state(
-        self, step: Step, _memo: dict[Step, EffectiveState] | None = None
+        self,
+        step: Step,
+        _memo: dict[Step, EffectiveState] | None = None,
+        _stat_cache: _StatCache | None = None,
     ) -> EffectiveState:
         if _memo is None:
             _memo = {}
@@ -163,11 +196,11 @@ class SubjectSession:
             return _memo[step]
         spec = STEP_SPECS[step]
         rec = self.manifest.steps.get(str(step), StepRecord())
-        dep_states = [self.effective_state(d, _memo) for d in spec.deps]
+        dep_states = [self.effective_state(d, _memo, _stat_cache) for d in spec.deps]
         deps_done = all(s == EffectiveState.DONE for s in dep_states)
         any_dep_stale = any(s == EffectiveState.STALE for s in dep_states)
 
-        present = self._completed_on_disk(step)
+        present = self._completed_on_disk(step, _stat_cache)
 
         # A recorded error from our most recent run is authoritative: show ERROR even if a
         # pre-existing or stale output artifact is still on disk (e.g. step 6 re-run that fails on
@@ -184,7 +217,9 @@ class SubjectSession:
                     # allblocks.wav from the recorded side too, so pre-exclusion manifests match.
                     recorded = {k: v for k, v in rec.dep_inputs.items() if k != paths.ALLBLOCKS_WAV}
                     stale = (
-                        self._dep_fingerprints(step) != recorded or not deps_done or any_dep_stale
+                        self._dep_fingerprints(step, _stat_cache) != recorded
+                        or not deps_done
+                        or any_dep_stale
                     )
                 else:
                     # outputs exist but we never ran it (pre-existing): only structural staleness
@@ -203,7 +238,8 @@ class SubjectSession:
 
     def effective_states(self) -> dict[Step, EffectiveState]:
         memo: dict[Step, EffectiveState] = {}
-        return {s: self.effective_state(s, memo) for s in STEP_SPECS}
+        cache: _StatCache = {}  # one stat per path across the whole pass
+        return {s: self.effective_state(s, memo, cache) for s in STEP_SPECS}
 
     def status(self) -> tuple[int, int, EffectiveState, Step | None]:
         """One-pass subject status: ``(done, total, representative_state, current_step)``.

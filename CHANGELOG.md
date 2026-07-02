@@ -6,6 +6,23 @@ in development); entries are grouped by the feature branch that delivered them, 
 
 ## [Unreleased]
 
+### Subject scan runs off the UI thread and in parallel (`feat/parallel-subject-scan`)
+
+- **Loading / re-scanning the subject list froze the app on low-CPU machines (e.g. a Mac laptop
+  over Box).** Each subject's status was computed serially on the UI thread, and every
+  `SubjectSession.status()` does ~15-20 `stat()`/`exists()` calls — on a Box-synced folder a single
+  call can block 100-500 ms while a cloud placeholder is fetched, so a full scan stalled the UI for
+  many seconds. The work is I/O-bound, so it now runs on a `QThreadPool` (up to 8 concurrent
+  workers) that overlaps the Box latency, and results stream back per subject via a queued signal —
+  the UI stays responsive throughout. The directory listing itself (`scan_subjects`) also moved off
+  the UI thread. A generation token drops results from a superseded scan (task switch / re-scan),
+  and the pool is torn down on app close. (New `gui/workers/summary_scanner.py`
+  `SubjectSummaryScanner`; `Dashboard._scan` / `_on_subjects_listed` / `_on_summary_ready`;
+  `MainWindow.closeEvent`.)
+- **Halved the filesystem I/O per subject.** Within one status pass, `SubjectSession` now stats each
+  path at most once (`_StatCache`); dependent steps had been re-`stat()`-ing the same output files
+  (e.g. `Trials.mat`) across the step DAG. (`core/session.py`.)
+
 ### Clock-drift anchors default to the overlapping trial number (`feat/clock-anchor-default-trial-label`)
 
 - **Adding an anchor (Ctrl+B) in the Fix clock drift editor left the label blank**, even though
