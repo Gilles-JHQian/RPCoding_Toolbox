@@ -6,6 +6,17 @@ in development); entries are grouped by the feature branch that delivered them, 
 
 ## [Unreleased]
 
+### Clock-drift anchors default to the overlapping trial number (`feat/clock-anchor-default-trial-label`)
+
+- **Adding an anchor (Ctrl+B) in the Fix clock drift editor left the label blank**, even though
+  every clock anchor is labelled by trial number. The new anchor now pre-fills the number of the
+  trial its selection overlaps most (`TrialIndex.overlapping`): the trial whose cue box overlaps the
+  selection the most, or — when the selection sits in a gap — the nearest one, which is robust
+  because at marking time the reference cue boxes are drifted off the true stimulus the user is
+  selecting, yet the drift is far smaller than the inter-trial spacing. Only the `clock_anchors`
+  lane pre-fills; other editable lanes (response, first-stims) still start empty. Press Enter to edit
+  the pre-filled number as before.
+
 ### Editor prompts to save unsaved edits on exit (`feat/editor-save-on-exit-prompt`)
 
 - **Leaving the editor with Esc (or Back, or the window close) silently discarded unsaved edits.**

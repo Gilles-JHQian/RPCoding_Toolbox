@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from rpcoding.core import paths
 from rpcoding.core.audio.denoise import denoise_allblocks
 from rpcoding.core.audio.io import duration_seconds
 from rpcoding.core.audio.render.cache import AudioRenderCache
@@ -47,6 +48,8 @@ _WAVE_H = 100  # waveform a bit shorter ...
 _SPEC_H = 176  # ... spectrogram taller
 _SPACER_ROW = 64  # a reserved high GLW row holding the bottom stretch (keeps fixed rows top-packed)
 _INITIAL_VIEW_S = 60.0  # open zoomed to this window (fast first render); Fit shows the whole file
+# The clock-drift lane whose labels are trial numbers; a new anchor pre-fills the overlapping trial.
+_TRIAL_NUMBER_LANE = Path(paths.CLOCK_ANCHORS_TXT).stem  # "clock_anchors"
 
 # Friendly left-column names for the lanes (the internal tier name still drives the trial index).
 _LANE_DISPLAY = {
@@ -718,7 +721,17 @@ class AudioEditor(QWidget):
             return
         self._focus_lane = self._editable_lane  # new labels land on the editable track
         self._select_only(self._editable_lane)
-        self._editable_lane.create(span[0], span[1])
+        self._editable_lane.create(span[0], span[1], self._default_label_for(span[0], span[1]))
+
+    def _default_label_for(self, t0: float, t1: float) -> str:
+        """Default label for a new interval. Clock-drift anchors are labelled by trial number, so on
+        the ``clock_anchors`` lane pre-fill the trial the selection overlaps most (else empty)."""
+        if self._editable_lane is None or self._editable_lane.name != _TRIAL_NUMBER_LANE:
+            return ""
+        if self._trial_index is None:
+            return ""
+        info = self._trial_index.overlapping(t0, t1)
+        return str(info.trial) if info is not None else ""
 
     def _navigate(self, step: int) -> None:
         """Tab / Shift+Tab: step through labels on the *focused* track (whatever you selected)."""
