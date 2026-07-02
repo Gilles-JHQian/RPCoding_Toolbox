@@ -32,6 +32,8 @@ def test_response_tags_per_task():
     # No-Delay reuses the same set; every tag carries a tooltip description.
     assert response_tags(Task.LEXICAL_NODELAY) == response_tags(Task.LEXICAL_DELAY)
     assert all(desc for _c, desc in response_tags(Task.LEXICAL_DELAY))
+    # Phoneme Sequencing: minimal palette (no Yes/No, no word/nonword errors).
+    assert [c for c, _desc in response_tags(Task.PHONEME_SEQUENCING)] == ["NOISY", "LATE_RESP"]
 
 
 # ---- synthetic NoDelay scenarios ----
@@ -134,6 +136,64 @@ def test_realignment_with_nonzero_diff():
     out = _run_nodelay(trials, trialinfo, stim_code, [Interval(40, 40.5, "w2")])
     diff1 = 30000 * 2.0 - 1_000_000  # nonzero realignment offset for trial 2
     assert out[1]["StimEnd_mfa"] == pytest.approx(30000 * 2.5 - diff1)
+
+
+# ---- synthetic Phoneme Sequencing scenarios (1:1, single "Listen" cue, no word/nonword) ----
+
+
+def _run_ps(trials, trialinfo, stim_code, response_code):
+    # words/nonwords are unused for PS (no classification)
+    return rpcode_to_trials(
+        trials, trialinfo, stim_code, response_code, set(), set(), task=Task.PHONEME_SEQUENCING
+    )
+
+
+def test_ps_all_correct():
+    # diff == 0 (Auditory == 30000*stim_start); each response comes just after its Go cue.
+    trials = [
+        {"Auditory": 30000 * 10, "Start": 290000, "Go": 30000 * 11},
+        {"Auditory": 30000 * 20, "Start": 590000, "Go": 30000 * 21},
+        {"Auditory": 30000 * 30, "Start": 890000, "Go": 30000 * 31},
+    ]
+    trialinfo = [_ti("Listen", "uga.wav"), _ti("Listen", "ava.wav"), _ti("Listen", "gab.wav")]
+    stim_code = [
+        Interval(10, 10.5, "uga.wav"),
+        Interval(20, 20.5, "ava.wav"),
+        Interval(30, 30.5, "gab.wav"),
+    ]
+    response_code = [  # one spoken response per trial (1:1)
+        Interval(12, 12.5, "uga"),
+        Interval(22, 22.5, "ava"),
+        Interval(32, 32.5, "gab"),
+    ]
+    out = _run_ps(trials, trialinfo, stim_code, response_code)
+    assert out[0]["Cue_Tag"] == "Cue/Listen/uga.wav/CORRECT"
+    assert out[1]["Response_Tag"] == "Resp/Listen/ava.wav/CORRECT"
+    # PS has a delay + go, so it emits Delay/Go tags (like Delay, unlike NoDelay/UP).
+    assert out[0]["Delay_Tag"] == "Delay/Listen/uga.wav/CORRECT"
+    assert out[0]["Go_Tag"] == "Go/Listen/uga.wav/CORRECT"
+    # no word/nonword or yes/no anywhere in the tags
+    for t in out:
+        for tag in ("Cue_Tag", "Auditory_Tag", "Response_Tag"):
+            assert not any(x in t[tag] for x in ("Word", "Nonword", "Yes_No"))
+    assert out[0]["StimCue"] == "uga.wav"
+    assert out[0]["ResponseStart"] == pytest.approx(30000 * 12.0)  # diff==0 realignment
+
+
+def test_ps_noisy_response():
+    trials = [{"Auditory": 30000 * 10, "Start": 290000, "Go": 30000 * 11}]
+    trialinfo = [_ti("Listen", "uga.wav")]
+    stim_code = [Interval(10, 10.5, "uga.wav")]
+    response_code = [Interval(12, 12.5, "NOISY")]  # coder marked a no / unclear response
+    out = _run_ps(trials, trialinfo, stim_code, response_code)
+    assert out[0]["Cue_Tag"] == "Cue/Listen/uga.wav/NOISY"
+
+
+def test_ps_one_to_one_invariant():
+    trials = [{"Auditory": 0, "Start": 0, "Go": 0}]
+    trialinfo = [_ti("Listen", "uga.wav")]
+    with pytest.raises(ValueError, match="one response per trial"):
+        _run_ps(trials, trialinfo, [Interval(0, 1, "uga.wav")], [])  # 0 responses != 1 trial
 
 
 # ---- Delay error-tag parsing ----

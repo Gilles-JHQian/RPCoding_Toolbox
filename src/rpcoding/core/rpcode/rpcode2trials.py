@@ -17,7 +17,7 @@ import numpy as np
 from rpcoding.core.labels import read_tier
 from rpcoding.core.matio import load_trials, save_mat, trial_cue, trial_stim
 from rpcoding.core.rpcode import errors as E
-from rpcoding.core.rpcode.response_fill import count_omitted
+from rpcoding.core.rpcode.response_fill import NOISY, count_omitted
 from rpcoding.core.tasks import Task
 from rpcoding.core.wordlists import NONWORD, WORD, classify
 
@@ -83,7 +83,9 @@ def rpcode_to_trials(
     if len(stim_cues) != n:
         raise ValueError(f"mfa_stim_words ({len(stim_cues)}) != trials ({n})")
 
+    is_ps = task == Task.PHONEME_SEQUENCING
     is_delay = task == Task.LEXICAL_DELAY
+    has_go = is_delay or is_ps  # tasks with a delay + Go cue: Delay/Go tags + Go-based EARLY check
     resp_starts = [0.0] * n
     resp_ends = [0.0] * n
     err_code = [0] * n  # NoDelay numeric correctness code
@@ -98,6 +100,17 @@ def rpcode_to_trials(
         resp_words = [iv.label for iv in response_code]
         if error_code is not None:
             err_tags = [iv.label for iv in error_code]
+    elif is_ps:
+        # Phoneme Sequencing: one spoken repeat per trial (1:1), single "Listen" cue, no Yes/No and
+        # no word/nonword. Response file is bsliang_resp_words_errors.txt (like NoDelay/UP).
+        if len(response_code) != n:
+            raise ValueError(
+                f"response_code ({len(response_code)}) != trialInfo ({n}) "
+                "(Phoneme Sequencing expects one response per trial)"
+            )
+        resp_starts = [iv.start for iv in response_code]
+        resp_ends = [iv.end for iv in response_code]
+        resp_words = [iv.label for iv in response_code]
     else:
         if 3 * len(response_code) != n:
             raise ValueError(
@@ -133,15 +146,22 @@ def rpcode_to_trials(
         out[t]["ResponseEnd"] = EDF_RATE * resp_ends[t] - diff
 
         cue = trial_cue(trialinfo[t])
-        ttag = _task_type_tag(cue)
-        cue_word = trial_stim(trialinfo[t])
-        wtag = classify(cue_word, words, nonwords)
-        if wtag is None:
-            raise ValueError(f"trial {t + 1}: '{cue_word}' not in the word/nonword lists")
+        if is_ps:
+            ttag = "Listen"  # PS: single cue, every trial is a spoken repeat
+            wtag = None  # no word/nonword classification for PS nonsense syllables
+        else:
+            ttag = _task_type_tag(cue)
+            cue_word = trial_stim(trialinfo[t])
+            wtag = classify(cue_word, words, nonwords)
+            if wtag is None:
+                raise ValueError(f"trial {t + 1}: '{cue_word}' not in the word/nonword lists")
 
         if is_delay:
             resp_yn = resp_words[t] if resp_words is not None else None
             resp_err = _delay_resp_err(err_tags[t], cue, wtag, resp_yn)
+        elif is_ps:
+            # Only NOISY / no-response is a coder error for PS; timing checks below add the rest.
+            resp_err = NOISY if resp_words is not None and NOISY in resp_words[t].upper() else None
         else:
             resp_err = None if err_code[t] == 1 else E.RESP_ERR
 
@@ -149,16 +169,19 @@ def rpcode_to_trials(
             resp_err = _append(resp_err, E.LATE_RESP)
         if t > 0 and float(out[t]["Start"]) - _NOISY_BSL_MARGIN - out[t - 1]["ResponseEnd"] < 0:
             resp_err = _append(resp_err, E.NOISY_BSL)
-        no_earlier = float(out[t]["Go"]) if is_delay else out[t]["StimEnd_mfa"] - _EARLY_STIM_MARGIN
+        no_earlier = float(out[t]["Go"]) if has_go else out[t]["StimEnd_mfa"] - _EARLY_STIM_MARGIN
         if out[t]["ResponseStart"] - no_earlier < 0:
             resp_err = _append(resp_err, E.EARLY_RESP)
         if not resp_err:
             resp_err = E.CORRECT
 
-        suffix = f"/{ttag}/{wtag}/{stim_cues[t]}/{resp_err}"
+        if is_ps:  # PS drops the Word/Nonword field (its syllables aren't classified)
+            suffix = f"/{ttag}/{stim_cues[t]}/{resp_err}"
+        else:
+            suffix = f"/{ttag}/{wtag}/{stim_cues[t]}/{resp_err}"
         out[t]["Cue_Tag"] = "Cue" + suffix
         out[t]["Auditory_Tag"] = "Auditory_stim" + suffix
-        if is_delay:
+        if has_go:
             out[t]["Delay_Tag"] = "Delay" + suffix
             out[t]["Go_Tag"] = "Go" + suffix
         out[t]["Response_Tag"] = "Resp" + suffix
