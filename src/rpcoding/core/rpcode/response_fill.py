@@ -1,17 +1,19 @@
-r"""Fill MFA-dropped response rows with placeholders — one entry per Repeat trial (NoDelay / UP).
+r"""Fill MFA-dropped response rows with placeholders — one entry per spoken-response trial.
 
-The MFA pipeline writes one response window per Repeat trial (annotated_resp_windows.txt), then
+The MFA pipeline writes one response window per production trial (annotated_resp_windows.txt), then
 aligns them. Where MFA fails to align a trial, textGrid2txt drops that empty-label row, so
-mfa_resp_words comes up short and the write-Trials 3:1 count check fails. Rather than drop those
-rows, keep a placeholder for each un-aligned Repeat trial:
+mfa_resp_words comes up short and the write-Trials count check fails. Rather than drop those rows,
+keep a placeholder for each un-aligned production trial:
 
-- ``Omitted`` — the trial's ``Omission`` says the subject **Responded**, so a real response exists
-  and a coder must review/code it (write-Trials refuses to run while any ``Omitted`` remains).
+- ``Omitted`` — the subject responded (per the ``Omission`` log for Lexical/UP, or by definition for
+  Phoneme Sequencing where every trial is spoken), so a real response exists and a coder must
+  review/code it (write-Trials refuses to run while any ``Omitted`` remains).
 - ``NOISY`` — otherwise (no logged response): the lab's standard "no / unclear response" code, an
   acceptable final label.
 
-Every Repeat trial then has exactly one entry in trial order, so the downstream positional mapping
-in ``rpcode2trials`` is also correct (a dropped row used to shift every later response).
+"Production trials" are the ones the subject speaks on: ``Repeat`` for Lexical / Uniqueness Point,
+**every** trial for Phoneme Sequencing (single "Listen" cue, 1:1). Each then has exactly one entry
+in trial order, so the downstream positional mapping in ``rpcode2trials`` is also correct.
 """
 
 from __future__ import annotations
@@ -22,9 +24,17 @@ from pathlib import Path
 from rpcoding.core import paths
 from rpcoding.core.labels import Interval, Tier, read_tier
 from rpcoding.core.matio import load_trialinfo, trial_cue
+from rpcoding.core.tasks import Task
 
 OMITTED = "Omitted"
 NOISY = "NOISY"
+
+
+def _production_trials(task: Task, trialinfo: list[dict]) -> list[int]:
+    """Indices (in trial order) of trials the subject speaks on, so a response should be coded."""
+    if task == Task.PHONEME_SEQUENCING:
+        return list(range(len(trialinfo)))  # every PS trial is a spoken repeat
+    return [t for t in range(len(trialinfo)) if trial_cue(trialinfo[t]) == "Repeat"]
 
 
 def fill_response_intervals(
@@ -45,10 +55,10 @@ def fill_response_intervals(
     return out
 
 
-def build_response_tier(results_dir: Path | str) -> Tier | None:
-    """Full one-per-Repeat-trial response tier (with placeholders) from a subject's MFA output.
+def build_response_tier(results_dir: Path | str, *, task: Task) -> Tier | None:
+    """Full one-per-production-trial response tier (with placeholders) from a subject's MFA output.
 
-    Aligned responses are mapped to their Repeat trial by time (which cue-event window they fall
+    Aligned responses are mapped to their production trial by time (which cue-event window they fall
     in), so a window capped short by ``max_dur`` never loses a real response. Returns ``None`` when
     the inputs are missing or don't line up, so callers can fall back to the raw MFA response.
     """
@@ -75,15 +85,20 @@ def build_response_tier(results_dir: Path | str) -> Tier | None:
         idx = min(max(bisect.bisect_right(cue_onsets, r.start) - 1, 0), n - 1)
         by_trial.setdefault(idx, r)  # first response wins (there is at most one per Repeat trial)
 
-    repeat_idxs = [t for t in range(n) if trial_cue(trialinfo[t]) == "Repeat"]
-    if windows and len(windows) != len(repeat_idxs):
+    production_idxs = _production_trials(task, trialinfo)
+    if windows and len(windows) != len(production_idxs):
         windows = []  # can't line windows up 1:1 -> use cue-onset placeholder positions instead
 
-    aligned = [by_trial.get(t) for t in repeat_idxs]
-    responded = [str(trialinfo[t].get("Omission", "")).strip() == "Responded" for t in repeat_idxs]
+    aligned = [by_trial.get(t) for t in production_idxs]
+    if task == Task.PHONEME_SEQUENCING:
+        responded = [True] * len(production_idxs)  # PS always elicits a spoken response
+    else:
+        responded = [
+            str(trialinfo[t].get("Omission", "")).strip() == "Responded" for t in production_idxs
+        ]
     placeholders = [
         (windows[k].start, windows[k].end) if windows else (cue_onsets[t], cue_onsets[t] + 1.0)
-        for k, t in enumerate(repeat_idxs)
+        for k, t in enumerate(production_idxs)
     ]
     return Tier("response", fill_response_intervals(aligned, placeholders, responded))
 
