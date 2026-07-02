@@ -77,6 +77,19 @@ def test_resolve_blocks_dir_fallback_when_absent(tmp_path):
     )
 
 
+def test_resolve_blocks_dir_phoneme_sequencing(tmp_path):
+    # PS acquisition folder is 'Phoneme Sequencing' (space); single session type, no keyword.
+    subj = tmp_path / "D100"
+    blocks = subj / "Phoneme Sequencing" / "All Blocks"
+    _make_block_mats(blocks, "D100", 1, 2, 3, 4)
+    assert paths.resolve_blocks_dir(subj, Task.PHONEME_SEQUENCING) == blocks
+
+
+def test_cogan_task_data_dir_phoneme_sequencing():
+    d = paths.cogan_task_data_dir(Path("/box/CoganLab"), "D100", Task.PHONEME_SEQUENCING)
+    assert d.parent.name == "Phoneme Sequencing"  # space folder, distinct from the D_Data task id
+
+
 # ---- resolve_block_dirs (multi-session) ----
 
 

@@ -9,6 +9,7 @@ from rpcoding.core.tasks import DEFAULT_MFA_TASK_MAP, Task
 
 def test_from_str():
     assert Task.from_str("LexicalDecRepDelay") is Task.LEXICAL_DELAY
+    assert Task.from_str("Phoneme_Sequencing") is Task.PHONEME_SEQUENCING
     with pytest.raises(ValueError):
         Task.from_str("NotATask")
 
@@ -18,3 +19,4 @@ def test_map_covers_all_tasks():
     assert DEFAULT_MFA_TASK_MAP[Task.LEXICAL_NODELAY] == "lexical_repeat_no_delay"
     assert DEFAULT_MFA_TASK_MAP[Task.LEXICAL_DELAY] == "lexical_repeat"
     assert DEFAULT_MFA_TASK_MAP[Task.UNIQUENESS_POINT] == "uniqueness_point"
+    assert DEFAULT_MFA_TASK_MAP[Task.PHONEME_SEQUENCING] == "phoneme_sequencing"
