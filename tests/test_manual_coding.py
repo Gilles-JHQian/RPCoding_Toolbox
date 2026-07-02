@@ -41,7 +41,7 @@ _UNIFIED = ["block_onsets", "first_stims", "condition_events", "cue_events", "re
 
 
 def test_tiers_for_step_first_stims(tmp_path):
-    specs, save_path = tiers_for_step(tmp_path, Step.MARK_FIRST_STIMS)
+    specs, save_path = tiers_for_step(tmp_path, Step.MARK_FIRST_STIMS, Task.LEXICAL_NODELAY)
     assert save_path == tmp_path / "first_stims.txt"
     assert [name for name, _t, _e in specs] == _UNIFIED
     # only first_stims is editable on this step
@@ -53,7 +53,7 @@ def test_tiers_for_step_response_coding(tmp_path):
     write_tier(Tier("cond", [Interval(1, 1.5, "1_Yes/No")]), tmp_path / "condition_events.txt")
     write_tier(Tier("r", [Interval(3, 4, "1_no")]), tmp_path / "bsliang_resp_words_errors.txt")
 
-    specs, save_path = tiers_for_step(tmp_path, Step.RESPONSE_CODING)
+    specs, save_path = tiers_for_step(tmp_path, Step.RESPONSE_CODING, Task.LEXICAL_NODELAY)
     assert save_path == tmp_path / "bsliang_resp_words_errors.txt"
     assert [name for name, _t, _e in specs] == _UNIFIED
     # only the response tier is editable, and it loaded the saved coding
@@ -64,7 +64,7 @@ def test_tiers_for_step_response_coding(tmp_path):
 def test_response_tier_falls_back_to_mfa(tmp_path):
     # no saved coding yet -> the response lane starts from the MFA-aligned response words
     write_tier(Tier("r", [Interval(3, 4, "no")]), tmp_path / "mfa" / "mfa_resp_words.txt")
-    specs, _save = tiers_for_step(tmp_path, Step.RESPONSE_CODING)
+    specs, _save = tiers_for_step(tmp_path, Step.RESPONSE_CODING, Task.LEXICAL_NODELAY)
     resp = next(t for name, t, _e in specs if name == "response")
     assert [iv.label for iv in resp.intervals] == ["no"]
 
@@ -72,7 +72,7 @@ def test_response_tier_falls_back_to_mfa(tmp_path):
 def test_tiers_for_step_denoise(tmp_path):
     # Denoise opens the editor too, but only to pick a noise profile: reference tiers are read-only,
     # nothing is editable, and there's no label save target (it completes via the audio write).
-    specs, save_path = tiers_for_step(tmp_path, Step.DENOISE)
+    specs, save_path = tiers_for_step(tmp_path, Step.DENOISE, Task.LEXICAL_NODELAY)
     assert save_path is None
     assert [name for name, _t, _e in specs] == [
         "block_onsets",
@@ -85,7 +85,7 @@ def test_tiers_for_step_denoise(tmp_path):
 
 def test_tiers_for_step_rejects_auto_step(tmp_path):
     with pytest.raises(ValueError, match="not an editor-backed step"):
-        tiers_for_step(tmp_path, Step.CONCAT_WAVS)
+        tiers_for_step(tmp_path, Step.CONCAT_WAVS, Task.LEXICAL_NODELAY)
 
 
 def test_bundled_word_lists_are_available():

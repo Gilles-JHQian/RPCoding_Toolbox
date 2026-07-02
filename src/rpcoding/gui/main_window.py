@@ -79,7 +79,7 @@ class MainWindow(QMainWindow):
     def _open_editor(self, session, step) -> None:  # noqa: ANN001 - Qt signal payloads
         from rpcoding.gui.editor_loader import tiers_for_step
 
-        specs, save_path = tiers_for_step(session.results_dir, step)
+        specs, save_path = tiers_for_step(session.results_dir, step, session.task)
         self._open_editor_with(
             session,
             step,

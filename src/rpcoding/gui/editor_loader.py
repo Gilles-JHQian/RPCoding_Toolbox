@@ -17,6 +17,7 @@ from rpcoding.core.matio import load_trialinfo, trial_block
 from rpcoding.core.mfa.ingest import ingest_mfa_tiers
 from rpcoding.core.rpcode.response_fill import build_response_tier
 from rpcoding.core.steps import Step
+from rpcoding.core.tasks import Task
 
 TierSpec = tuple[str, Tier, bool]
 
@@ -26,15 +27,15 @@ def _load_or_empty(path: Path, name: str) -> Tier:
     return read_tier(path, name) if path.exists() else Tier(name, [])
 
 
-def _response_tier(results_dir: Path) -> Tier:
+def _response_tier(results_dir: Path, task: Task) -> Tier:
     """The response lane: the saved coding if present, else the MFA response words (with one
-    Omitted/NOISY placeholder per Repeat trial MFA failed to align), else empty."""
+    Omitted/NOISY placeholder per production trial MFA failed to align), else empty."""
     saved = results_dir / paths.RESP_WORDS_ERRORS_TXT
     if saved.exists():
         return read_tier(saved, "response")
-    # One row per Repeat trial with Omitted/NOISY placeholders for MFA drops; None (fall through)
-    # unless this is an MFA'd NoDelay/UP subject.
-    filled = build_response_tier(results_dir)
+    # One row per production trial with Omitted/NOISY placeholders for MFA drops; None (fall
+    # through) unless this is an MFA'd NoDelay / UP / Phoneme-Sequencing subject.
+    filled = build_response_tier(results_dir, task=task)
     if filled is not None:
         return filled
     mfa = ingest_mfa_tiers(results_dir / paths.MFA_DIRNAME)
@@ -42,7 +43,9 @@ def _response_tier(results_dir: Path) -> Tier:
     return Tier("response", list(src.intervals)) if src is not None else Tier("response", [])
 
 
-def tiers_for_step(results_dir: Path | str, step: Step) -> tuple[list[TierSpec], Path | None]:
+def tiers_for_step(
+    results_dir: Path | str, step: Step, task: Task
+) -> tuple[list[TierSpec], Path | None]:
     """Return ``(tier_specs, save_path)`` for an editor-backed step (save_path None for denoise).
 
     Raises ``ValueError`` for steps that aren't edited in the audio editor.
@@ -75,7 +78,7 @@ def tiers_for_step(results_dir: Path | str, step: Step) -> tuple[list[TierSpec],
         ("first_stims", first, is_first),
         ("condition_events", cond, False),
         ("cue_events", cue, False),
-        ("response", _response_tier(results_dir), is_resp),
+        ("response", _response_tier(results_dir, task), is_resp),
     ]
     save_path = results_dir / (paths.FIRST_STIMS_TXT if is_first else paths.RESP_WORDS_ERRORS_TXT)
     return specs, save_path

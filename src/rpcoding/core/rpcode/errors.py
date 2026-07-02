@@ -42,12 +42,20 @@ _LEXICAL_TAGS: list[tuple[str, str]] = [
     ("LATE_RESP", "Late response (responding out of the trial)"),
 ]
 
+# Phoneme Sequencing: every trial is a spoken repeat of a nonsense syllable — no Yes/No and no
+# word/nonword, so only the "unclear / no response" and out-of-trial timing tags apply.
+_PS_TAGS: list[tuple[str, str]] = [
+    ("NOISY", "Noisy / no or unclear response"),
+    ("LATE_RESP", "Late response (responding out of the trial)"),
+]
+
 # Wiki: Lexical Delay (pp. 9-10); Lexical No-Delay (p. 15) reuses the same set (coded only in Repeat
 # trials); Uniqueness Point isn't in the Wiki and behaves like lexical.
 RESPONSE_TAG_PALETTE: dict[str, list[tuple[str, str]]] = {
     Task.LEXICAL_DELAY.value: _LEXICAL_TAGS,
     Task.LEXICAL_NODELAY.value: _LEXICAL_TAGS,
     Task.UNIQUENESS_POINT.value: _LEXICAL_TAGS,
+    Task.PHONEME_SEQUENCING.value: _PS_TAGS,
 }
 
 
