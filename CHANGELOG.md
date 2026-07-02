@@ -6,6 +6,24 @@ in development); entries are grouped by the feature branch that delivered them, 
 
 ## [Unreleased]
 
+### Phoneme Sequencing task support (`feat/ps-*`)
+
+- **Adds Phoneme Sequencing as a 4th task**, end-to-end. Its paradigm (verified against the task
+  script `phoneme_sequencing_revised2018.m` and real data): hear a nonsense syllable → ~1.1 s delay
+  → "Speak" go cue → repeat it, on **every** trial (single "Listen" cue, 1:1). Structurally like the
+  Delay task but simplest — no Yes/No, no word/nonword.
+- `tasks.py` registers `PHONEME_SEQUENCING` (D_Data folder `Phoneme_Sequencing`, MFA config
+  `phoneme_sequencing`, acquisition folder `Phoneme Sequencing`); `paths._TASK_GROUP` gains
+  `phoneme` so block discovery matches. The MFA config/dictionary (`english_us_ps`) were already
+  vendored; `mark_yes_no: False` is now explicit. MFA needs no code change — `annotateResp` already
+  keeps a window for the `Listen`/`Speak` cue.
+- `response_fill` seeds the response tier for **all** PS trials (not just Repeat); a dropped MFA
+  response becomes `Omitted` (the subject always speaks) so a coder reviews it.
+- `rpcode2trials` gains a PS branch: 1:1 count check, single `Listen` task-type tag, **no**
+  word/nonword classification, error codes limited to NOISY + the timing-derived
+  LATE_RESP/NOISY_BSL/EARLY_RESP, and Delay-style `Delay_Tag`/`Go_Tag` (PS has a delay + Go). This
+  matches the lab's analogous retrocue enrichment pattern (no PS-specific MATLAB script exists).
+
 ### Subject scan runs off the UI thread (`feat/parallel-subject-scan`)
 
 - **Loading / re-scanning the subject list froze the app on low-CPU machines (e.g. a Mac laptop
