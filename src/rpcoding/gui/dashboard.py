@@ -73,10 +73,11 @@ class Dashboard(QWidget):
         # off the UI thread and caches the result per subject (key = "task/subject").
         self._blocks_cache: dict[str, Path | None] = {}
         self._blocks_pending: set[str] = set()
-        # Subject status is computed off the UI thread and in parallel — Box stat() latency is
-        # I/O-bound, so a small thread pool overlaps it and a big (cloud-synced) scan never blocks
-        # the UI. Results stream back per subject via a queued signal; a generation token inside the
-        # scanner drops results from a superseded scan (task switch / re-scan).
+        # Subject status is computed on a single background worker so a big (cloud-synced) scan
+        # never blocks the UI. It is deliberately serial: Box's virtual filesystem locks up under
+        # concurrent stat()s, so parallelism froze the whole machine, not just the app. Results
+        # stream back per subject via a queued signal; a generation token in the scanner drops a
+        # superseded scan's results (task switch / re-scan).
         self._summary_total = 0
         self._summary_done = 0
         self._scanner = SubjectSummaryScanner(self._config, self)
