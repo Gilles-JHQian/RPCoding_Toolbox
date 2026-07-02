@@ -159,18 +159,18 @@ class SettingsDialog(QDialog):
 
     # ---- anomaly handling section ----
     def _build_anomaly_group(self) -> QGroupBox:
-        group = QGroupBox("异常处理 · Anomaly handling")
+        group = QGroupBox("Anomaly handling")
         gl = QVBoxLayout(group)
         gl.addWidget(QLabel("Tools for subjects whose upstream data needs manual correction."))
         row = QHBoxLayout()
-        btn = QPushButton("修复时钟差异 · Fix clock drift…")
+        btn = QPushButton("Fix clock drift…")
         btn.setToolTip(
             "Mark each block's true first/last stimulus position on the audio; the tool fits the\n"
             "EDF-trigger vs allblocks.wav clock drift and corrects the cue/condition events."
         )
         btn.clicked.connect(lambda: self.done(self.FIX_CLOCK))
         row.addWidget(btn)
-        merge_btn = QPushButton("合并分段录制 · Merge multi-part files…")
+        merge_btn = QPushButton("Merge multi-part files…")
         merge_btn.setToolTip(
             "For subjects recorded in >1 part, combine the numbered Trials1/2, trialInfo1/2 and\n"
             "experiment1/2 into single Trials.mat / trialInfo.mat / experiment.mat in D_Data."
