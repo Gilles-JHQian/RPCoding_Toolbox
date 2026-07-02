@@ -29,3 +29,35 @@ def test_trial_index_without_condition():
     cue = Tier("cue", [Interval(4.0, 5.0, "1_x.wav")])
     ti = TrialIndex(cue)
     assert ti.at(4.5).task is None and ti.at(4.5).stim == "x.wav"
+
+
+def _three_trials() -> TrialIndex:
+    return TrialIndex(
+        Tier("cue", [Interval(4.0, 5.0, "1_a.wav"),
+                     Interval(10.0, 11.0, "2_b.wav"),
+                     Interval(16.0, 17.0, "3_c.wav")])
+    )
+
+
+def test_overlapping_picks_most_overlap():
+    ti = _three_trials()
+    assert ti.overlapping(4.2, 4.9).trial == 1  # inside trial 1's box
+    assert ti.overlapping(10.5, 12.0).trial == 2  # overlaps trial 2's box most
+    # straddles trial 2/3 boxes -> the one with the larger overlap
+    assert ti.overlapping(10.2, 16.2).trial == 2  # 0.8 of box 2 vs 0.2 of box 3
+    assert ti.overlapping(10.9, 16.8).trial == 3  # 0.1 of box 2 vs 0.8 of box 3
+
+
+def test_overlapping_falls_back_to_nearest_when_no_overlap():
+    ti = _three_trials()
+    # a selection in the gap just before trial 2's drifted box -> nearest is trial 2
+    assert ti.overlapping(9.0, 9.6).trial == 2
+    # just after trial 1's box, closer to 1 than 2
+    assert ti.overlapping(5.4, 5.8).trial == 1
+    assert ti.overlapping(0.0, 1.0).trial == 1  # before everything -> first trial (nearest)
+
+
+def test_overlapping_handles_reversed_span_and_empty():
+    ti = _three_trials()
+    assert ti.overlapping(4.9, 4.2).trial == 1  # t0 > t1 tolerated
+    assert TrialIndex(Tier("cue", [])).overlapping(1.0, 2.0) is None

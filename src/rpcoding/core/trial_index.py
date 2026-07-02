@@ -57,3 +57,16 @@ class TrialIndex:
             return None
         i = bisect_right(self._starts, t) - 1
         return self._infos[i] if i >= 0 else None
+
+    def overlapping(self, t0: float, t1: float) -> TrialInfo | None:
+        """The trial whose cue interval overlaps ``[t0, t1]`` the most; if none overlaps, the
+        nearest one (``None`` only when there are no trials).
+
+        Scoring each trial by ``min(hi, end) - max(lo, start)`` is positive for an overlap (larger
+        = more) and negative for a gap (``-gap``), so a single max picks the most-overlapping trial
+        and otherwise the closest — robust when the reference cue boxes are drifted off the true
+        stimulus the user is selecting (the drift is far smaller than the inter-trial spacing)."""
+        if not self._infos:
+            return None
+        lo, hi = (t0, t1) if t0 <= t1 else (t1, t0)
+        return max(self._infos, key=lambda t: min(hi, t.end) - max(lo, t.start))
