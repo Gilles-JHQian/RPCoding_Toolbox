@@ -28,6 +28,7 @@ _TASK_GROUP = {
     Task.LEXICAL_NODELAY: "lexical",
     Task.LEXICAL_DELAY: "lexical",
     Task.UNIQUENESS_POINT: "uniqueness",
+    Task.PHONEME_SEQUENCING: "phoneme",
 }
 _TASK_KEYWORD = {Task.LEXICAL_NODELAY: "nodelay", Task.LEXICAL_DELAY: "delay"}
 _TASK_ANTI_KEYWORD = {Task.LEXICAL_DELAY: "nodelay"}  # a Delay session must not be the NoDelay one

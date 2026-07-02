@@ -11,6 +11,7 @@ class Task(StrEnum):
     LEXICAL_NODELAY = "LexicalDecRepNoDelay"
     LEXICAL_DELAY = "LexicalDecRepDelay"
     UNIQUENESS_POINT = "Uniqueness_Point"
+    PHONEME_SEQUENCING = "Phoneme_Sequencing"
 
     @classmethod
     def from_str(cls, value: str) -> Task:
@@ -23,6 +24,7 @@ DEFAULT_MFA_TASK_MAP: dict[Task, str | None] = {
     Task.LEXICAL_NODELAY: "lexical_repeat_no_delay",
     Task.LEXICAL_DELAY: "lexical_repeat",
     Task.UNIQUENESS_POINT: "uniqueness_point",
+    Task.PHONEME_SEQUENCING: "phoneme_sequencing",
 }
 
 # The raw-acquisition tree (Cogan_Task_Data) uses human-readable folder names with spaces,
@@ -31,4 +33,5 @@ COGAN_TASK_FOLDER: dict[Task, str] = {
     Task.LEXICAL_NODELAY: "Lexical No Delay",
     Task.LEXICAL_DELAY: "Lexical Delay",
     Task.UNIQUENESS_POINT: "Uniqueness Point",
+    Task.PHONEME_SEQUENCING: "Phoneme Sequencing",
 }
