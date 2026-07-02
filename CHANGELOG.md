@@ -135,7 +135,7 @@ in development); entries are grouped by the feature branch that delivered them, 
   a block"*, early patients <60 for No-Delay) and fixed it by hand-adjusting `cue_events`; this
   gadget automates it. (Verified from the EDF: `trigTimes_audioAligned − trigTimes` is a *constant*
   latency, so the trigger grid is accurate and only the EDF↔audio rate needs fixing.)
-- **Marking (Settings → 异常处理 · Anomaly handling → 修复时钟差异 · Fix clock drift…).** Pick a
+- **Marking (Settings → Anomaly handling → Fix clock drift…).** Pick a
   task/subject; the editor opens `allblocks.wav` with an editable `clock_anchors` lane pre-seeded
   with one draggable anchor at each block's first and last trial (labelled by trial number, sitting
   at the drifted cue position). Drag each onto the true stimulus; add anchors on anomalous trials.

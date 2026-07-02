@@ -70,7 +70,7 @@ class MergeMultipartDialog(QDialog):
         outer.addWidget(self._out, 1)
 
         row = QHBoxLayout()
-        self._merge = QPushButton("合并 · Merge")
+        self._merge = QPushButton("Merge")
         self._merge.setObjectName("Primary")
         self._merge.clicked.connect(self._do_merge)
         row.addWidget(self._merge)
