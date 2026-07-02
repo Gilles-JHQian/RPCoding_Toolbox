@@ -7,7 +7,10 @@ name: phoneme_sequencing
 stim_dir: 'Box\CoganLab\ECoG_Task_Data\Stim\PhonemeSequencing\all_tokens\mfa\stim_annotations'
 
 # maximum duration of window to provide to mfa in seconds (reduces duration of end of block response windows)
-max_dur: 7.0 
+max_dur: 7.0
+
+# Phoneme Sequencing has no Yes/No trials — every trial is a spoken repeat; only resp is aligned.
+mark_yes_no: False
 
 ##### MFA settings #####
 mfa:
